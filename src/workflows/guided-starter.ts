@@ -8,6 +8,17 @@ export type GuidedFoundationId = "drums" | "bassline" | "chords" | "pads";
 export type GuidedContinuationId = "verse_variation" | "build_drop" | "intro_outro";
 export type GuidedChainId = "chain_a" | "chain_b";
 
+const GUIDED_FOUNDATION_IDS: readonly GuidedFoundationId[] = ["drums", "bassline", "chords", "pads"];
+const GUIDED_CONTINUATION_IDS: readonly GuidedContinuationId[] = ["verse_variation", "build_drop", "intro_outro"];
+const GUIDED_CHAIN_IDS: readonly GuidedChainId[] = ["chain_a", "chain_b"];
+
+export const isGuidedFoundationId = (value: string): value is GuidedFoundationId =>
+  (GUIDED_FOUNDATION_IDS as readonly string[]).includes(value);
+export const isGuidedContinuationId = (value: string): value is GuidedContinuationId =>
+  (GUIDED_CONTINUATION_IDS as readonly string[]).includes(value);
+export const isGuidedChainId = (value: string): value is GuidedChainId =>
+  (GUIDED_CHAIN_IDS as readonly string[]).includes(value);
+
 export type GuidedSessionState = {
   genre?: GuidedGenreId;
   scaleMode?: GuidedScaleMode;

@@ -24,6 +24,9 @@ import {
   GuidedContinuationId,
   GuidedFoundationId,
   GuidedGenreId,
+  isGuidedChainId,
+  isGuidedContinuationId,
+  isGuidedFoundationId,
   GuidedScaleMode,
   GuidedSessionState,
   markContinuationCompleted,
@@ -1499,7 +1502,8 @@ export class WizardTuiApp {
     }
 
     if (choice.id.startsWith("foundation_")) {
-      const stepId = choice.id.replace("foundation_", "") as GuidedFoundationId;
+      const stepId = choice.id.replace("foundation_", "");
+      if (!isGuidedFoundationId(stepId)) return "Unknown foundation step.";
       const genreId = this.guidedState.genre;
       if (!genreId) {
         this.openGenreOptions();
@@ -1524,7 +1528,8 @@ export class WizardTuiApp {
     }
 
     if (choice.id.startsWith("continuation_")) {
-      const stepId = choice.id.replace("continuation_", "") as GuidedContinuationId;
+      const stepId = choice.id.replace("continuation_", "");
+      if (!isGuidedContinuationId(stepId)) return "Unknown continuation step.";
       const genreId = this.guidedState.genre;
       if (!genreId) {
         this.openGenreOptions();
@@ -1554,7 +1559,8 @@ export class WizardTuiApp {
     }
 
     if (choice.id.startsWith("chain_")) {
-      const chainId = choice.id.replace("chain_", "") as GuidedChainId;
+      const chainId = choice.id.replace("chain_", "");
+      if (!isGuidedChainId(chainId)) return "Unknown chain.";
       const genreId = this.guidedState.genre;
       if (!genreId) {
         this.openGenreOptions();

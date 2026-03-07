@@ -17,6 +17,9 @@ import {
   GuidedContinuationId,
   GuidedFoundationId,
   GuidedGenreId,
+  isGuidedChainId,
+  isGuidedContinuationId,
+  isGuidedFoundationId,
   GuidedScaleMode,
   GuidedSessionState,
   markContinuationCompleted,
@@ -395,7 +398,8 @@ export class ElectronChatSession {
         return "Choose a genre first.";
       }
 
-      const stepId = option.id.replace("foundation_", "") as GuidedFoundationId;
+      const stepId = option.id.replace("foundation_", "");
+      if (!isGuidedFoundationId(stepId)) return "Unknown foundation step.";
       const snapshot = this.captureGuidedSnapshot("build");
       await applyFoundationStep(this.service, genreId, this.guidedState, stepId);
       this.guidedHistory.push({ snapshot, undoSteps: 1 });
@@ -411,7 +415,8 @@ export class ElectronChatSession {
         return "Choose a genre first.";
       }
 
-      const stepId = option.id.replace("continuation_", "") as GuidedContinuationId;
+      const stepId = option.id.replace("continuation_", "");
+      if (!isGuidedContinuationId(stepId)) return "Unknown continuation step.";
       const snapshot = this.captureGuidedSnapshot("build");
       await applyContinuationStep(this.service, genreId, this.guidedState, stepId);
       this.guidedHistory.push({ snapshot, undoSteps: 1 });
@@ -432,7 +437,8 @@ export class ElectronChatSession {
         return "Choose a genre first.";
       }
 
-      const chainId = option.id.replace("chain_", "") as GuidedChainId;
+      const chainId = option.id.replace("chain_", "");
+      if (!isGuidedChainId(chainId)) return "Unknown chain.";
       const snapshot = this.captureGuidedSnapshot("chain");
       await applyChainChoice(this.service, genreId, chainId);
       this.guidedHistory.push({ snapshot, undoSteps: 1 });
