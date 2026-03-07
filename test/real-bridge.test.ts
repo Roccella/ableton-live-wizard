@@ -1,20 +1,23 @@
 import assert from "node:assert/strict";
+import http from "node:http";
+import { AddressInfo } from "node:net";
 import test from "node:test";
 import { RealLiveBridge } from "../src/live-bridge/real-live-bridge.js";
 import { OperationPlan } from "../src/types.js";
 
-test("real bridge works against HTTP backend contract (mocked fetch)", async () => {
-  const originalFetch = globalThis.fetch;
+test("real bridge works against a local HTTP backend contract", async () => {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = String(input);
-
-    if (url.endsWith("/health")) {
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    if (req.method === "GET" && url.pathname === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
     }
 
-    if (url.endsWith("/state")) {
-      return new Response(
+    if (req.method === "GET" && url.pathname === "/state") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
         JSON.stringify({
           transport: {
             isPlaying: true,
@@ -36,31 +39,43 @@ test("real bridge works against HTTP backend contract (mocked fetch)", async () 
           trackOrder: ["track_1"],
           refreshedAt: new Date().toISOString(),
         }),
-        { status: 200 },
       );
+      return;
     }
 
-    if (url.endsWith("/preview")) {
-      return new Response(JSON.stringify({ preview: "preview-ok" }), { status: 200 });
+    if (req.method === "POST" && url.pathname === "/preview") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ preview: "preview-ok" }));
+      return;
     }
 
-    if (url.endsWith("/apply")) {
-      return new Response(JSON.stringify({ operationId: "op_test", message: "apply-ok" }), {
-        status: 200,
-      });
+    if (req.method === "POST" && url.pathname === "/apply") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ operationId: "op_test", message: "apply-ok" }));
+      return;
     }
 
-    if (url.endsWith("/undo")) {
-      return new Response(JSON.stringify({ operationId: "op_test", message: "undo-ok" }), {
-        status: 200,
-      });
+    if (req.method === "POST" && url.pathname === "/undo") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ operationId: "op_test", message: "undo-ok" }));
+      return;
     }
 
-    return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
-  }) as typeof fetch;
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
 
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const port = (server.address() as AddressInfo).port;
   try {
-    const bridge = new RealLiveBridge({ baseUrl: "http://127.0.0.1:8765", timeoutMs: 1000 });
+    const bridge = new RealLiveBridge({ baseUrl: `http://127.0.0.1:${port}`, timeoutMs: 1000 });
 
     const ping = await bridge.ping();
     assert.equal(ping.ok, true);
@@ -95,6 +110,14 @@ test("real bridge works against HTTP backend contract (mocked fetch)", async () 
     const undo = await bridge.undoLast();
     assert.equal(undo.message, "undo-ok");
   } finally {
-    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
   }
 });

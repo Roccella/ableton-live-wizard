@@ -146,6 +146,17 @@ Outcome:
 - The companion now looks and behaves much more like a real chat app.
 - Guided mode and freeform prompting now share one surface instead of competing UI zones.
 
+### 2026-03-07 - Close the pending review-tests backlog
+Context:
+- The code-review fixes were already landed, but the follow-up review still had six open testing gaps around HTTP integration, helper coverage, pure transforms, and flaky mocking.
+- The repo needed a stronger regression net before continuing feature work.
+Decision:
+- Add deterministic tests for daemon HTTP routes, MCP error paths, utility helpers, TCP bridge transforms, and every named basic pattern.
+- Replace the flaky `globalThis.fetch` patch in the real bridge test with a local HTTP backend contract test.
+Outcome:
+- The pending `review-tests` checklist is now complete.
+- The repo now passes `npm run build`, `npm run lint`, and `npm test` with 113 passing tests.
+
 ## Milestones
 
 ### M0 - Research + Setup Complete

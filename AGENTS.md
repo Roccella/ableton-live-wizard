@@ -29,6 +29,7 @@ Build an agentic copilot for Ableton Live that lets the user control production 
 - Validated flows in Live: create/rename/delete tracks, create/delete scenes, create/delete clips, assign stock instruments by role, write basic test patterns, set tempo, start/stop transport, fire clips, fire scenes, undo/redo.
 - Current checkpoint: the Electron companion can already control the same MVP1 flows as the TUI, and the architecture still preserves a future daemon-backed path for multiple clients.
 - This should still be treated as a UX/control milestone, not as a musically strong generation milestone yet.
+- The pending `review-tests` backlog is now closed: automated coverage now includes prompt executor branches, Electron chat session flows, mock bridge edge cases, daemon HTTP routes, TCP bridge data transforms, utility helpers, full basic-pattern coverage, and the real bridge backend contract.
 - The companion runtime still uses the guided decision tree with fixed `House` and `Drum n bass` starters, foundation-step choices, continuation-step choices, and fixed chain suggestions.
 - The guided startup flow now begins with `clear current set` vs `keep what is already in Live`, then asks for `genre -> scale -> key` before offering fixed building steps.
 - The guided tree is now non-linear inside each genre: element choices and arrangement choices coexist, and later element choices fill the scenes that already exist.
