@@ -1,135 +1,386 @@
+/* === Design System: Ableton Live Wizard ===
+   Palette:  OKLCH, dark minimal, cool blue tint
+   Spacing:  4 · 8 · 12 · 16 · 24 · 32
+   Type:     11 · 12 · 14 · 16
+   Radius:   6 (sm) · 10 (md) · 14 (lg)
+   Buttons:  action | ghost | danger
+*/
+
 :root {
-  --bg: #0b0c0f;
-  --surface: #111317;
-  --surface-strong: #15181d;
-  --surface-user: #181b21;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text: #eceef2;
-  --text-muted: #9ca3af;
-  --accent: #d6dae1;
-  --radius: 14px;
+  /* Primitives */
+  --gray-950: oklch(8% 0.01 250);
+  --gray-900: oklch(12% 0.01 250);
+  --gray-850: oklch(15% 0.01 250);
+  --gray-800: oklch(18% 0.01 250);
+  --gray-700: oklch(24% 0.01 250);
+  --gray-500: oklch(40% 0.01 250);
+  --gray-400: oklch(55% 0.01 250);
+  --gray-50: oklch(93% 0.005 250);
+
+  --cyan-600: oklch(55% 0.1 220);
+  --cyan-400: oklch(75% 0.08 220);
+  --cyan-bg: oklch(18% 0.03 220);
+
+  --red-600: oklch(55% 0.15 25);
+  --red-bg: oklch(18% 0.04 25);
+
+  --green-600: oklch(65% 0.15 145);
+
+  /* Semantic */
+  --bg: var(--gray-950);
+  --surface: var(--gray-900);
+  --surface-raised: var(--gray-850);
+  --surface-user: var(--gray-800);
+  --border: var(--gray-700);
+  --border-subtle: oklch(20% 0.008 250);
+  --text: var(--gray-50);
+  --text-secondary: var(--gray-400);
+  --text-tertiary: var(--gray-500);
+  --accent: var(--cyan-600);
+  --accent-text: var(--cyan-400);
+  --accent-bg: var(--cyan-bg);
+  --danger: var(--red-600);
+  --danger-bg: var(--red-bg);
+  --success: var(--green-600);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Type */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+  --font-sans: "Avenir Next", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
-* {
+/* === Reset === */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+  margin: 0;
 }
 
 html,
 body {
-  margin: 0;
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   overflow: hidden;
 }
 
-.chat-shell {
+/* === Layout === */
+
+.app-shell {
   height: 100vh;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
+
+/* === Header === */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface);
+  user-select: none;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.status-dot.is-disconnected {
+  background: var(--danger);
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.header-meta .meta-value {
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+/* === Chat Feed === */
 
 .chat-feed {
-  overflow: auto;
-  padding: 18px 14px 12px;
+  overflow-y: auto;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
+/* === Messages === */
+
 .message {
-  max-width: 100%;
-  display: grid;
-  gap: 8px;
+  max-width: 88%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .message-user {
-  justify-items: end;
+  align-self: flex-end;
+  max-width: 80%;
+}
+
+.message-system {
+  max-width: 100%;
+  align-self: center;
 }
 
 .message-bubble {
-  width: fit-content;
-  max-width: 100%;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
   white-space: pre-wrap;
-  line-height: 1.45;
+  line-height: var(--leading-normal);
+  word-break: break-word;
 }
 
 .message-user .message-bubble {
   background: var(--surface-user);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+}
+
+.message-assistant .message-bubble {
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
 }
 
 .message-system .message-bubble {
-  color: var(--text-muted);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-4);
+  text-align: center;
 }
 
-.choice-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 4px;
+/* === Options === */
+
+.options-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.choice-button {
+.option {
   width: 100%;
   text-align: left;
-  font: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 500;
   color: var(--text);
-  background: #101216;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
   outline: none;
 }
 
-.choice-button:hover,
-.choice-button:focus-visible,
-.choice-button.is-selected {
-  border-color: var(--border-strong);
-  background: var(--surface-strong);
+.option:hover {
+  background: var(--surface-raised);
+  border-color: var(--border);
 }
 
-.choice-button:disabled {
-  opacity: 0.45;
+.option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.option:active {
+  opacity: 0.8;
+}
+
+.option.is-selected {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.option:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
+/* Ghost: Back, Undo */
+
+.option-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.option-ghost:hover {
+  background: var(--surface);
+  border-color: transparent;
+  color: var(--text);
+}
+
+.option-ghost.is-selected {
+  background: var(--surface);
+  border-color: transparent;
+  color: var(--text);
+}
+
+/* Danger: Clear set */
+
+.option-danger {
+  color: var(--danger);
+}
+
+.option-danger:hover {
+  background: var(--danger-bg);
+  border-color: oklch(28% 0.03 25);
+}
+
+.option-danger.is-selected {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* === Loading === */
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.loading-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* === Composer === */
+
 .composer {
-  padding: 10px 14px 14px;
-  border-top: 1px solid var(--border);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
   background: var(--bg);
 }
 
-#prompt-input {
+.composer-input {
   width: 100%;
   resize: none;
-  min-height: 72px;
-  max-height: 180px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  min-height: 48px;
+  max-height: 160px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
-  padding: 12px 14px;
-  font: 500 15px/1.45 "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: var(--leading-normal);
   outline: none;
 }
 
-#prompt-input:focus {
-  border-color: var(--border-strong);
+.composer-input::placeholder {
+  color: var(--text-tertiary);
 }
 
-#prompt-input:disabled {
-  opacity: 0.6;
+.composer-input:focus {
+  border-color: var(--border);
 }
+
+.composer-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.composer-input:disabled {
+  opacity: 0.5;
+}
+
+/* === Utility === */
 
 .sr-only {
   position: absolute;

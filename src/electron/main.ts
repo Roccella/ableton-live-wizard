@@ -110,7 +110,7 @@ const createMainWindow = async (): Promise<void> => {
     y: savedWindowState.y,
     minWidth: 360,
     minHeight: 680,
-    backgroundColor: "#0b1320",
+    backgroundColor: "#0c0e14",
     autoHideMenuBar: true,
     title: "Ableton Live Wizard",
     show: true,

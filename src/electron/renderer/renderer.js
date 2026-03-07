@@ -3,9 +3,11 @@ const state = {
   pending: false,
   focusMode: "input",
   optionIndex: 0,
+  header: null,
 };
 
 const elements = {
+  header: document.getElementById("app-header"),
   chatFeed: document.getElementById("chat-feed"),
   composerForm: document.getElementById("composer-form"),
   promptInput: document.getElementById("prompt-input"),
@@ -46,53 +48,94 @@ const syncFocus = () => {
         return;
       }
     }
-
     elements.promptInput.focus();
   });
 };
 
-const renderOptions = (messageId) => {
-  const promptState = activePromptState();
-  if (promptState.messageId !== messageId || promptState.options.length === 0) {
-    return "";
+const getOptionVariant = (optionId) => {
+  if (optionId === "back" || optionId === "guided_undo") return "ghost";
+  if (optionId === "prepare_clear") return "danger";
+  return "action";
+};
+
+const renderHeader = () => {
+  if (!state.header) {
+    elements.header.innerHTML = `
+      <div class="header-status">
+        <span class="status-dot is-disconnected"></span>
+        <span>Connecting</span>
+      </div>
+    `;
+    return;
   }
 
-  return `
-    <div class="choice-list" role="listbox" aria-label="Suggestions">
-      ${promptState.options
-        .map(
-          (option, index) => `
-            <button
-              class="choice-button${state.focusMode === "options" && state.optionIndex === index ? " is-selected" : ""}"
-              type="button"
-              data-option-id="${escapeHtml(option.id)}"
-              data-choice-index="${index}"
-              ${state.pending || !option.enabled ? "disabled" : ""}
-            >
-              ${escapeHtml(option.label)}
-            </button>
-          `,
-        )
-        .join("")}
+  const { connection, bpm, trackCount } = state.header;
+  const isConnected = Boolean(connection);
+
+  elements.header.innerHTML = `
+    <div class="header-status">
+      <span class="status-dot${isConnected ? "" : " is-disconnected"}"></span>
+      <span>${isConnected ? "Connected" : "Disconnected"}</span>
+    </div>
+    <div class="header-meta">
+      <span class="meta-value">${bpm}</span> BPM
+      ${trackCount > 0 ? `<span class="meta-value">${trackCount}</span> tracks` : ""}
     </div>
   `;
 };
 
+const renderOptionsGroup = () => {
+  const promptState = activePromptState();
+  if (promptState.options.length === 0) return "";
+
+  return `<div class="options-group" role="listbox" aria-label="Suggestions">${promptState.options
+    .map((option, index) => {
+      const variant = getOptionVariant(option.id);
+      const selectedClass = state.focusMode === "options" && state.optionIndex === index ? " is-selected" : "";
+      const variantClass = variant !== "action" ? ` option-${variant}` : "";
+      const disabled = state.pending || !option.enabled ? "disabled" : "";
+      return `<button
+        class="option${variantClass}${selectedClass}"
+        type="button"
+        role="option"
+        data-option-id="${escapeHtml(option.id)}"
+        data-choice-index="${index}"
+        ${disabled}
+      >${escapeHtml(option.label)}</button>`;
+    })
+    .join("")}</div>`;
+};
+
 const renderChat = () => {
   const messages = state.snapshot?.messages ?? [];
+  const promptState = activePromptState();
 
-  elements.chatFeed.innerHTML = messages
-    .map(
-      (message) => `
-        <article class="message message-${message.role}">
-          <div class="message-bubble">
-            <div>${escapeHtml(message.text)}</div>
-            ${renderOptions(message.id)}
-          </div>
-        </article>
-      `,
-    )
+  let html = messages
+    .map((message) => {
+      let messageHtml = `<article class="message message-${message.role}">
+        <div class="message-bubble">${escapeHtml(message.text)}</div>
+      </article>`;
+
+      if (message.id === promptState.messageId && promptState.options.length > 0) {
+        messageHtml += renderOptionsGroup();
+      }
+
+      return messageHtml;
+    })
     .join("");
+
+  if (state.pending) {
+    html += `<div class="loading-indicator">
+      <div class="loading-dots">
+        <span class="loading-dot"></span>
+        <span class="loading-dot"></span>
+        <span class="loading-dot"></span>
+      </div>
+      <span>Working</span>
+    </div>`;
+  }
+
+  elements.chatFeed.innerHTML = html;
 
   for (const button of elements.chatFeed.querySelectorAll("[data-option-id]")) {
     button.addEventListener("click", async () => {
@@ -100,9 +143,7 @@ const renderChat = () => {
     });
 
     button.addEventListener("keydown", async (event) => {
-      if (!hasOptions()) {
-        return;
-      }
+      if (!hasOptions()) return;
 
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
         event.preventDefault();
@@ -161,10 +202,9 @@ const applySnapshot = (snapshot) => {
     state.focusMode = "input";
   }
 
-  elements.promptInput.placeholder =
-    hasPromptOptions
-      ? "Write a prompt, or press Tab to focus the suggestions."
-      : snapshot.inputPlaceholder;
+  elements.promptInput.placeholder = hasPromptOptions
+    ? "Write a prompt, or press Tab to focus the suggestions."
+    : snapshot.inputPlaceholder;
 
   renderChat();
   syncFocus();
@@ -178,9 +218,7 @@ const setPending = (pending) => {
 
 const handleSubmit = async () => {
   const input = elements.promptInput.value.trim();
-  if (!input) {
-    return;
-  }
+  if (!input) return;
 
   setPending(true);
   try {
@@ -200,9 +238,7 @@ const handleSubmit = async () => {
 };
 
 const handleChooseOption = async (optionId) => {
-  if (!optionId || state.pending) {
-    return;
-  }
+  if (!optionId || state.pending) return;
 
   setPending(true);
   try {
@@ -222,15 +258,11 @@ const handleChooseOption = async (optionId) => {
 
 elements.composerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!state.pending) {
-    await handleSubmit();
-  }
+  if (!state.pending) await handleSubmit();
 });
 
 elements.promptInput.addEventListener("keydown", async (event) => {
-  if (state.pending) {
-    return;
-  }
+  if (state.pending) return;
 
   if (event.key === "Tab" && hasOptions()) {
     event.preventDefault();
@@ -253,19 +285,28 @@ elements.promptInput.addEventListener("keydown", async (event) => {
   }
 });
 
+renderHeader();
+
 window.wizardDesktop
   .bootstrap()
-  .then((snapshot) => {
-    applySnapshot(snapshot);
+  .then((data) => {
+    state.header = {
+      connection: data.connection,
+      bpm: data.state?.transport?.bpm ?? 0,
+      trackCount: data.state?.trackCount ?? 0,
+      sceneCount: data.state?.sceneCount ?? 0,
+    };
+    renderHeader();
+    applySnapshot(data);
   })
   .catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
+    state.header = { connection: "", bpm: 0, trackCount: 0, sceneCount: 0 };
+    renderHeader();
     applySnapshot({
       connection: "",
       inputPlaceholder: "Write a prompt.",
-      promptState: {
-        options: [],
-      },
+      promptState: { options: [] },
       messages: [{ id: "bootstrap-error", role: "system", text: `Bootstrap failed: ${message}` }],
     });
   });
