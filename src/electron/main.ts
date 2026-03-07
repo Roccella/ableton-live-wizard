@@ -212,7 +212,7 @@ ipcMain.handle("wizard:bootstrap", async () => {
   };
 });
 ipcMain.handle("wizard:submit-prompt", async (_event, input: string) =>
-  chatSession.submitFreeform(input, service.describeConnection()),
+  chatSession.submitFreeform(String(input).slice(0, 2000), service.describeConnection()),
 );
 ipcMain.handle("wizard:choose-option", async (_event, optionId: string) =>
   chatSession.chooseOption(optionId, service.describeConnection()),
