@@ -265,12 +265,10 @@ export class TcpLiveBridge implements LiveBridge {
         break;
       }
       case "start_playback": {
-        const _payload = plan.payload as PlaybackPayload;
         await this.sendCommand("start_playback", {});
         break;
       }
       case "stop_playback": {
-        const _payload = plan.payload as PlaybackPayload;
         await this.sendCommand("stop_playback", {});
         break;
       }
@@ -442,13 +440,7 @@ export class TcpLiveBridge implements LiveBridge {
       uri: item.uri,
     }));
 
-    const directMatch = pickBestBrowserItem(directItems, {
-      role: "bass",
-      roots: [rootPath],
-      include,
-      exclude,
-      maxDepth: depthRemaining,
-    });
+    const directMatch = pickBestBrowserItem(directItems, { include, exclude });
 
     if (directMatch?.uri) {
       return {

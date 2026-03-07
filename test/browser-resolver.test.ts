@@ -25,13 +25,7 @@ test("explicit bass query avoids drum-kit style candidates", () => {
       { name: "MPE Synth Lab Kit", isFolder: false, isLoadable: true, uri: "kit" },
       { name: "Synth Pop Bass", isFolder: false, isLoadable: true, uri: "bass" },
     ],
-    {
-      role: "bass",
-      roots: profile.roots,
-      include: profile.include,
-      exclude: profile.exclude,
-      maxDepth: 3,
-    },
+    { include: profile.include, exclude: profile.exclude },
   );
 
   assert.deepEqual(profile.roots, ["sounds", "instruments"]);
@@ -45,13 +39,7 @@ test("explicit lead query prefers the exact named lead preset", () => {
       { name: "Sync Brass", isFolder: false, isLoadable: true, uri: "brass" },
       { name: "Filtered Sync Lead", isFolder: false, isLoadable: true, uri: "lead" },
     ],
-    {
-      role: "lead",
-      roots: profile.roots,
-      include: profile.include,
-      exclude: profile.exclude,
-      maxDepth: 3,
-    },
+    { include: profile.include, exclude: profile.exclude },
   );
 
   assert.equal(best?.uri, "lead");
@@ -64,13 +52,7 @@ test("explicit house chords query prefers the exact chord preset", () => {
       { name: "House Pluck", isFolder: false, isLoadable: true, uri: "pluck" },
       { name: "House Chords", isFolder: false, isLoadable: true, uri: "chords" },
     ],
-    {
-      role: "keys",
-      roots: profile.roots,
-      include: profile.include,
-      exclude: profile.exclude,
-      maxDepth: 3,
-    },
+    { include: profile.include, exclude: profile.exclude },
   );
 
   assert.equal(best?.uri, "chords");

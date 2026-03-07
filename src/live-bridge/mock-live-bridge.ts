@@ -118,12 +118,10 @@ export class MockLiveBridge implements LiveBridge {
         break;
       }
       case "start_playback": {
-        const _payload = plan.payload as PlaybackPayload;
         this.state.transport.isPlaying = true;
         break;
       }
       case "stop_playback": {
-        const _payload = plan.payload as PlaybackPayload;
         this.state.transport.isPlaying = false;
         for (const sceneId of this.state.sceneOrder) {
           this.state.scenes[sceneId].isTriggered = false;

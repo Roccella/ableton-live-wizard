@@ -21,6 +21,8 @@ export const deepClone = <T>(value: T): T =>
 
 const debugListeners = new Set<(entry: DebugLogEntry) => void>();
 
+let debugLogDirEnsured = false;
+
 const defaultDebugLogPath = (): string => {
   if (process.env.WIZARD_DEBUG_LOG_PATH) {
     return process.env.WIZARD_DEBUG_LOG_PATH;
@@ -42,7 +44,10 @@ export const debugLog = (scope: string, message: string, payload?: unknown): voi
     payload,
   };
   try {
-    fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
+    if (!debugLogDirEnsured) {
+      fs.mkdirSync(path.dirname(debugLogPath), { recursive: true });
+      debugLogDirEnsured = true;
+    }
     const serializedPayload =
       payload === undefined
         ? ""

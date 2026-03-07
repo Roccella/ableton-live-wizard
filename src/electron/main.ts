@@ -1,24 +1,28 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalWizardCompanionService } from "../companion/local-service.js";
 import { getDebugLogPath } from "../util.js";
 import { ElectronChatSession } from "./chat-session.js";
+import { summarizeLiveState } from "./shared.js";
 
 app.setName("Ableton Live Wizard");
 
 const mainLogPath = process.env.WIZARD_ELECTRON_MAIN_LOG_PATH
-  ?? path.join(os.homedir(), "Library", "Application Support", "Ableton Live Wizard", "logs", "electron-main.log");
+  ?? path.join(app.getPath("userData"), "logs", "electron-main.log");
 
+let mainLogDirEnsured = false;
 const logMain = (message: string, payload?: unknown): void => {
   const line =
     payload === undefined
       ? `[${new Date().toISOString()}] ${message}\n`
       : `[${new Date().toISOString()}] ${message} ${JSON.stringify(payload)}\n`;
   try {
-    fs.mkdirSync(path.dirname(mainLogPath), { recursive: true });
+    if (!mainLogDirEnsured) {
+      fs.mkdirSync(path.dirname(mainLogPath), { recursive: true });
+      mainLogDirEnsured = true;
+    }
     fs.appendFileSync(mainLogPath, line, "utf8");
   } catch {
     // Startup logging must not crash the app.
@@ -30,6 +34,14 @@ const service = new LocalWizardCompanionService();
 const chatSession = new ElectronChatSession(service);
 
 let mainWindow: BrowserWindow | undefined;
+
+const bringWindowToFront = (window: BrowserWindow): void => {
+  window.center();
+  window.show();
+  window.focus();
+  window.moveTop();
+  app.focus({ steal: true });
+};
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFile);
@@ -125,12 +137,7 @@ const createMainWindow = async (): Promise<void> => {
 
   window.once("ready-to-show", () => {
     logMain("window:ready-to-show");
-    window.center();
-    window.show();
-    window.showInactive();
-    window.focus();
-    window.moveTop();
-    app.focus({ steal: true });
+    bringWindowToFront(window);
   });
 
   window.on("closed", () => {
@@ -142,6 +149,18 @@ const createMainWindow = async (): Promise<void> => {
   window.on("close", () => {
     logMain("window:close");
     saveWindowState(window);
+  });
+
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith("file://")) {
+      logMain("window:will-navigate:blocked", { url });
+      event.preventDefault();
+    }
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    logMain("window:new-window:blocked", { url });
+    return { action: "deny" };
   });
 
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
@@ -161,12 +180,7 @@ const createMainWindow = async (): Promise<void> => {
 
   await window.loadFile(path.join(currentDir, "renderer", "index.html"));
   logMain("window:loadFile:resolved");
-  window.center();
-  window.show();
-  window.showInactive();
-  window.focus();
-  window.moveTop();
-  app.focus({ steal: true });
+  bringWindowToFront(window);
 };
 
 service.subscribe((event) => {
@@ -194,17 +208,7 @@ ipcMain.handle("wizard:bootstrap", async () => {
     ...snapshot,
     debugLogPath: getDebugLogPath(),
     resourceCount: catalog.length,
-    state: {
-      refreshedAt: state.refreshedAt,
-      transport: {
-        bpm: state.transport.bpm,
-        isPlaying: state.transport.isPlaying,
-      },
-      trackCount: state.trackOrder.length,
-      sceneCount: state.sceneOrder.length,
-      trackNames: state.trackOrder.map((trackId) => state.tracks[trackId]?.name ?? trackId),
-      sceneNames: state.sceneOrder.map((sceneId) => state.scenes[sceneId]?.name ?? sceneId),
-    },
+    state: summarizeLiveState(state),
   };
 });
 ipcMain.handle("wizard:submit-prompt", async (_event, input: string) =>
@@ -227,12 +231,7 @@ app.on("activate", () => {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
     }
-    mainWindow.center();
-    mainWindow.show();
-    mainWindow.showInactive();
-    mainWindow.focus();
-    mainWindow.moveTop();
-    app.focus({ steal: true });
+    bringWindowToFront(mainWindow);
     return;
   }
 

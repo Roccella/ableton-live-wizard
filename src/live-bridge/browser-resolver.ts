@@ -1,5 +1,3 @@
-import { InstrumentSearchProfile } from "../catalog/instrument-role-catalog.js";
-
 export interface BrowserItemCandidate {
   name: string;
   isFolder: boolean;
@@ -48,7 +46,7 @@ export const scoreBrowserItem = (
 
 export const pickBestBrowserItem = (
   items: BrowserItemCandidate[],
-  profile: InstrumentSearchProfile,
+  profile: { include: string[]; exclude: string[] },
 ): BrowserItemCandidate | undefined => {
   let best: BrowserItemCandidate | undefined;
   let bestScore = Number.NEGATIVE_INFINITY;

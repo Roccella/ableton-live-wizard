@@ -50,7 +50,7 @@ export interface CompanionBootstrap extends CompanionSessionSnapshot {
   state: CompanionStateSummary;
 }
 
-export interface CompanionPromptReply extends CompanionSessionSnapshot {}
+export type CompanionPromptReply = CompanionSessionSnapshot;
 
 export const COMPANION_QUICK_ACTIONS: CompanionQuickAction[] = [
   { id: "refresh", label: "Refresh", command: "refresh" },

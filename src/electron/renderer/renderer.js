@@ -106,6 +106,13 @@ const renderOptionsGroup = () => {
     .join("")}</div>`;
 };
 
+const updateOptionSelection = () => {
+  for (const button of elements.chatFeed.querySelectorAll("[data-choice-index]")) {
+    const index = parseInt(button.dataset.choiceIndex, 10);
+    button.classList.toggle("is-selected", state.focusMode === "options" && index === state.optionIndex);
+  }
+};
+
 const renderChat = () => {
   const messages = state.snapshot?.messages ?? [];
   const promptState = activePromptState();
@@ -148,7 +155,7 @@ const renderChat = () => {
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
         event.preventDefault();
         state.optionIndex = Math.min(state.optionIndex + 1, activePromptState().options.length - 1);
-        renderChat();
+        updateOptionSelection();
         syncFocus();
         return;
       }
@@ -156,7 +163,7 @@ const renderChat = () => {
       if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
         event.preventDefault();
         state.optionIndex = Math.max(state.optionIndex - 1, 0);
-        renderChat();
+        updateOptionSelection();
         syncFocus();
         return;
       }
@@ -268,7 +275,7 @@ elements.promptInput.addEventListener("keydown", async (event) => {
     event.preventDefault();
     state.focusMode = "options";
     clampOptionIndex();
-    renderChat();
+    updateOptionSelection();
     syncFocus();
     return;
   }
