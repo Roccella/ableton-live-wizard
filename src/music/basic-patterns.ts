@@ -3,6 +3,24 @@ import { BasicPatternName, MidiNote, Transport } from "../types.js";
 const beatsPerBar = (transport: Transport): number =>
   transport.signatureNumerator * (4 / transport.signatureDenominator);
 
+export const BASIC_PATTERN_NAMES: BasicPatternName[] = [
+  "bass-test",
+  "lead-riff",
+  "pad-block",
+  "chord-stabs",
+  "house-kick",
+  "house-snare",
+  "house-hats",
+  "house-bass",
+  "house-chords",
+  "dnb-breakbeat",
+  "dnb-kick",
+  "dnb-snare",
+  "dnb-hats",
+  "dnb-bass",
+  "dnb-pads",
+];
+
 export const generateBasicPattern = (
   pattern: BasicPatternName,
   bars: number,

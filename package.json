@@ -1,15 +1,34 @@
 {
   "name": "ableton-live-wizard",
+  "productName": "Ableton Live Wizard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/src/electron/main.js",
   "description": "MVP1 scaffold for Ableton Live Wizard",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "node --enable-source-maps --loader ts-node/esm src/cli.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.json && node scripts/copy-electron-assets.mjs",
+    "dev": "npm run dev:companion",
+    "dev:mock": "npm run dev:companion:mock",
+    "dev:tui": "WIZARD_TUI_LOCAL=1 LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node --enable-source-maps --loader ts-node/esm src/cli.ts",
+    "dev:tui:mock": "WIZARD_TUI_LOCAL=1 LIVE_BRIDGE=mock node --enable-source-maps --loader ts-node/esm src/cli.ts",
+    "dev:daemon-client": "LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node --enable-source-maps --loader ts-node/esm src/cli.ts",
+    "dev:daemon": "LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node --enable-source-maps --loader ts-node/esm src/daemon/main.ts",
+    "dev:companion": "npm run build && LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} electron dist/src/electron/main.js",
+    "dev:companion:mock": "npm run build && LIVE_BRIDGE=mock electron dist/src/electron/main.js",
     "dev:bridge-stub": "node --enable-source-maps --loader ts-node/esm src/dev/bridge-stub.ts",
-    "start": "node dist/src/cli.js",
-    "test": "node --test dist/test/*.test.js",
+    "start": "LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} electron dist/src/electron/main.js",
+    "start:mock": "LIVE_BRIDGE=mock electron dist/src/electron/main.js",
+    "start:tui": "WIZARD_TUI_LOCAL=1 LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node dist/src/cli.js",
+    "start:tui:mock": "WIZARD_TUI_LOCAL=1 LIVE_BRIDGE=mock node dist/src/cli.js",
+    "start:daemon-client": "LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node dist/src/cli.js",
+    "start:local": "WIZARD_TUI_LOCAL=1 LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node dist/src/cli.js",
+    "companion": "npm start",
+    "companion:mock": "npm run start:mock",
+    "daemon": "LIVE_BRIDGE=${LIVE_BRIDGE:-tcp} node dist/src/daemon/main.js",
+    "daemon:mock": "LIVE_BRIDGE=mock node dist/src/daemon/main.js",
+    "package:mac": "npm run build && node scripts/package-electron-app.mjs",
+    "test": "node --test dist/test/*.js",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "engines": {
@@ -17,11 +36,14 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/ws": "^8.18.1",
+    "electron": "^40.8.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
   "dependencies": {
     "@types/blessed": "^0.1.27",
-    "neo-blessed": "^0.2.0"
+    "neo-blessed": "^0.2.0",
+    "ws": "^8.19.0"
   }
 }

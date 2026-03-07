@@ -1,14 +1,17 @@
-# Ableton Live Wizard - MVP1 Session Copilot
+# Ableton Live Wizard
 
-This repo now includes:
-- TypeScript/Node keyboard-first TUI and bridge layer
-- `mock`, `http`, and `tcp` bridge modes
-- Session-state refresh on demand and after each command
-- Track creation, rename, delete, stock instrument selection, basic clip creation, and basic note patterns
-- A bundled Ableton Remote Script for `LIVE_BRIDGE=tcp`
-- A single-terminal UI with agent panel + simplified Session View
-- Guided startup suggestions with fixed `House` and `Drum n bass` trees
-- A first end-to-end checkpoint where the terminal UI can assemble very basic full-track demos from fixed genre flows
+Ableton Live Wizard now runs primarily as a local Electron companion app for Ableton Live, with the older TUI kept available as a fallback and debugging surface.
+
+The current scope is still MVP1:
+- Session View clips on normal MIDI tracks
+- stock instrument assignment
+- guided `House` and `Drum n bass` starters
+- preview/apply/undo-friendly mutations
+
+The main architectural shift in this revision is:
+- the TUI can run local-first in one process for the lowest-friction operator path
+- the daemon still exists as an optional local transport layer for future clients
+- MCP is treated as a future adapter surface, not the internal runtime contract
 
 ## Quick start
 ```bash
@@ -17,12 +20,24 @@ npm run build
 npm test
 ```
 
+During active development:
+
+```bash
+npm run dev
+```
+
+`npm run dev` rebuilds and opens the Electron companion. `npm start` opens the existing built app.
+
 ## Ableton setup
 Install the bundled Remote Script from [support/AbletonMCP/__init__.py](/Users/iwa/repos/ableton-live-wizard/support/AbletonMCP/__init__.py) into Ableton's Remote Scripts directory as:
 
 `AbletonMCP/__init__.py`
 
-If you already installed an older copy, replace it with the bundled file from this repo and restart Live. The current script adds clip firing and transport support used by the TUI.
+On this machine, the reusable installer is:
+
+```bash
+scripts/install-ableton-remote-script.command
+```
 
 Then in Live:
 - `Preferences > Link, Tempo & MIDI`
@@ -30,23 +45,111 @@ Then in Live:
 - `Input: None`
 - `Output: None`
 
-## Run against Live
+Machine-specific paths and reinstall notes are saved in [local-installation.md](/Users/iwa/repos/ableton-live-wizard/docs/local-installation.md).
+Future signing/notarization notes are saved in [macos-signing-notarization.md](/Users/iwa/repos/ableton-live-wizard/docs/macos-signing-notarization.md).
+
+## Runtime modes
+
+### Desktop companion for Live
+The main operator path is now the Electron companion app:
+
 ```bash
-LIVE_BRIDGE=tcp npm start
+npm start
 ```
 
-`npm start` now opens the TUI directly. There is no separate REPL mode in the normal flow.
-Debug traces are written to `logs/wizard-debug.log`.
+This does three things:
+- defaults to `LIVE_BRIDGE=tcp`
+- opens the desktop companion window
+- keeps prompt execution local in the same process
 
-## TUI controls
-- `shift+tab`: switch between agent and session view
-- Arrow keys: navigate transport buttons, tracks, clips, scenes, and footer buttons
-- `enter`: activate a session button or select a track/clip/scene and jump to chat
-- `backspace` twice: delete selected track, clip, or scene when applicable
-- `r`: refresh state
-- `q`: quit
+If you prefer a launcher:
 
-The interface is keyboard-first. Mouse support is disabled in the current build.
+```bash
+scripts/start-live-wizard.command
+```
+
+You can also use the companion-specific launcher:
+
+```bash
+scripts/start-wizard-companion.command
+```
+
+### Packaged macOS app
+To generate a local `.app` bundle:
+
+```bash
+npm run package:mac
+```
+
+Or with the launcher:
+
+```bash
+scripts/package-wizard-companion.command
+```
+
+Current output path on this machine:
+
+- `/Users/iwa/repos/ableton-live-wizard/release/Ableton Live Wizard-darwin-arm64/Ableton Live Wizard.app`
+
+### TUI fallback
+If you want the previous terminal surface:
+
+```bash
+npm run start:tui
+```
+
+For development without Live:
+
+```bash
+npm run start:tui:mock
+```
+
+### Daemon only
+If you want the daemon without the companion UI:
+
+```bash
+scripts/start-wizard-daemon.command
+```
+
+### Daemon client mode
+If you explicitly want the TUI to talk to `wizard-daemon` over HTTP/WebSocket:
+
+```bash
+npm run start:daemon-client
+```
+
+### Mock mode
+For desktop development without Live:
+
+```bash
+npm run start:mock
+```
+
+### Local fallback mode
+This keeps everything in one process and is mainly for debugging:
+
+```bash
+npm run start:local
+```
+
+## Companion UI
+The Electron companion now behaves like a minimal chat sidebar:
+- no header panel
+- no debug panel inside the app
+- no quick-action or sample-prompt button strips
+- one chat feed with the current guided choices embedded in the conversation
+- one integrated input composer at the bottom
+
+Input behavior is now normal desktop text entry:
+- `Enter`: send
+- `Shift+Enter`: newline
+- `Cmd+Enter` / `Ctrl+Enter`: send
+- `Tab`: move from the input into the current guided choices
+- `Arrow Up` / `Arrow Down`: move through guided choices when they have focus
+
+Debug/status output now goes to the terminal where you launched `npm start`.
+
+The legacy TUI remains in the repo for fallback testing, but it is no longer the preferred operator surface.
 
 ## Prompt commands
 - `suggest`
@@ -60,39 +163,35 @@ The interface is keyboard-first. Mouse support is disabled in the current build.
 - `clip play`
 - `create track [name]`
 - `create scene [name]`
+- `delete track`
 - `delete clip`
 - `delete scene`
-- `delete track`
 - `instrument <role-or-query>`
 - `create clip [bars]`
-- `pattern <bass-test|lead-riff|pad-block|chord-stabs|house-kick|house-hats|house-bass|house-chords|dnb-breakbeat|dnb-bass|dnb-pads> [bars]`
-- `pattern <bass-test|lead-riff|pad-block|chord-stabs|house-kick|house-snare|house-hats|house-bass|house-chords|dnb-breakbeat|dnb-kick|dnb-snare|dnb-hats|dnb-bass|dnb-pads> [bars]`
-- `b`, `l`, `p`, `d` as prompt aliases for instrument roles
+- `pattern <name> [bars]`
+- `b`, `l`, `p`, `d`
 
-## Guided startup flow
-- On launch, the agent panel opens directly into a fixed guided tree
-- The first decision is whether to clear the current set or keep it
-- Current enabled genres:
-  - `House`
-  - `Drum n bass`
-- After choosing a genre, the guide asks for scale mode and key
-- Each genre offers fixed element choices, arrangement choices, guided undo, and fixed chain suggestions
-- Genre choice also sets a fixed BPM (`House 125`, `Drum n bass 160`)
-- You can still type directly at any time instead of choosing from the tree
-- Current checkpoint: this guided flow can already reach a very basic full-track result in the terminal, but the musical material is still intentionally rough and highly constrained
+## Resource-first direction
+The repo now includes an initial resource catalog in code for:
+- reusable patterns
+- scene skeletons
+- compound bundles
 
-## Bridge modes
-- `LIVE_BRIDGE=mock`
-- `LIVE_BRIDGE=http`
-- `LIVE_BRIDGE=tcp`
+Current catalog scope is intentionally narrow:
+- `House`
+- `Drum n bass`
+
+Research and future watch items are saved in:
+- [producer-pal-teardown.md](/Users/iwa/repos/ableton-live-wizard/research/producer-pal-teardown.md)
+- [ableton-mcp-teardown.md](/Users/iwa/repos/ableton-live-wizard/research/ableton-mcp-teardown.md)
+- [guided-suggestions-and-musical-libraries.md](/Users/iwa/repos/ableton-live-wizard/research/guided-suggestions-and-musical-libraries.md)
+- [ecosystem-watchlist.md](/Users/iwa/repos/ableton-live-wizard/research/ecosystem-watchlist.md)
 
 ## Current limitations
-- Clips in MVP1 are Session View only.
-- `apply cc` is not supported by the TCP bridge yet.
-- Returns and Master are intentionally out of scope in MVP1.
-- Track references in the prompt are context-first; direct freeform multi-word track targeting is not implemented yet.
-- Mouse support is intentionally disabled for now.
-- The TUI does not auto-refresh in the background anymore; use `r` or any mutating action to update state.
-- If Live crashes or the bridge behaves unexpectedly, inspect `logs/wizard-debug.log` and Ableton's `Log.txt`.
-- The guided startup system is intentionally narrow for now: two fixed genres, fixed stock instruments, fixed patterns, fixed scenes, and fixed chain suggestions.
-- The TUI forces terminal mode `xterm` by default to avoid a `neo-blessed` terminfo bug seen with `xterm-256color`. Override with `WIZARD_TUI_TERM` only if you need a different terminal profile.
+- Session View remains the operative clip surface.
+- `apply cc` is still not supported by the TCP bridge.
+- Returns, Master, Arrangement workflows, and mixing intelligence are still out of scope.
+- The first resource catalog is code-defined and conservative.
+- The daemon binds only to `127.0.0.1` when used.
+- The macOS bundle is local and unsigned; notarization/signing is not implemented yet.
+- The future M4L launcher/status device is not implemented yet.

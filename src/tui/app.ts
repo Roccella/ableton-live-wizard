@@ -1,9 +1,9 @@
 import blessed from "neo-blessed";
-import { getBridgeMode } from "../live-bridge/factory.js";
-import { WizardMcpServer } from "../mcp/server.js";
-import { BasicPatternName, InstrumentRole, LiveState, Track } from "../types.js";
+import { LiveState, Track } from "../types.js";
 import { buildAgentPanelContent } from "./agent-panel.js";
 import { buildPromptPanelContent, measurePromptPanelHeight } from "./prompt-panel.js";
+import { createCompanionService } from "../companion/factory.js";
+import { WizardCompanionEvent, WizardCompanionService } from "../companion/types.js";
 import {
   applyChainChoice,
   applyContinuationStep,
@@ -34,6 +34,7 @@ import { debugLog, getDebugLogPath } from "../util.js";
 
 type FocusArea = "agent" | "session";
 type SessionArea = "toolbar" | "grid" | "footer";
+type SidebarPane = "chat" | "input" | "debug";
 type ToolbarAction = "undo" | "redo" | "tempo_down" | "tempo_up" | "play_toggle";
 type FooterAction = "add_track" | "add_scene";
 type DeleteTarget =
@@ -50,6 +51,14 @@ type AgentOption = {
   enabled: boolean;
 };
 type GuidedMode = "prepare" | "genre" | "scale_mode" | "key" | "build" | "chain" | "free";
+type ExtendedGuidedMode = GuidedMode | "custom_input";
+type AgentViewState = {
+  question?: string;
+  helperText?: string;
+  options: AgentOption[];
+  mode: ExtendedGuidedMode;
+  selectedIndex: number;
+};
 type GuidedSnapshot = {
   guidedState: GuidedSessionState;
   mode: Exclude<GuidedMode, "free">;
@@ -67,46 +76,14 @@ type PausedAction = {
   onSuccess: (response: string) => void;
 };
 
-const ROLE_TO_PATTERN: Record<InstrumentRole, BasicPatternName> = {
-  bass: "bass-test",
-  lead: "lead-riff",
-  pad: "pad-block",
-  pluck: "lead-riff",
-  keys: "chord-stabs",
-  drums: "house-kick",
-  fx: "lead-riff",
-};
-
-const BASIC_PATTERNS: BasicPatternName[] = [
-  "bass-test",
-  "lead-riff",
-  "pad-block",
-  "chord-stabs",
-  "house-kick",
-  "house-snare",
-  "house-hats",
-  "house-bass",
-  "house-chords",
-  "dnb-breakbeat",
-  "dnb-kick",
-  "dnb-snare",
-  "dnb-hats",
-  "dnb-bass",
-  "dnb-pads",
-];
-const PROMPT_ROLE_ALIASES: Record<string, InstrumentRole> = {
-  b: "bass",
-  l: "lead",
-  p: "pad",
-  d: "drums",
-};
 const TOOLBAR_ACTIONS: ToolbarAction[] = ["undo", "redo", "tempo_down", "tempo_up", "play_toggle"];
 const FOOTER_ACTIONS: FooterAction[] = ["add_track", "add_scene"];
 const SPINNER_FRAMES = ["|", "/", "-", "\\"];
-const LEFT_WIDTH = "31%";
-const RIGHT_WIDTH = "69%";
 const MIN_PROMPT_HEIGHT = 7;
-const MAX_PROMPT_HEIGHT = 14;
+const MAX_PROMPT_HEIGHT = 12;
+const MIN_DEBUG_HEIGHT = 5;
+const MAX_DEBUG_HEIGHT = 6;
+const DEBUG_HEIGHT_RATIO = 0.18;
 const CLIP_GLYPH = "░░░░░░";
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -118,8 +95,26 @@ const truncate = (value: string, length: number): string =>
 const renderButton = (label: string, active: boolean): string =>
   active ? `{black-fg}{cyan-bg}[ ${label} ]{/cyan-bg}{/black-fg}` : `[ ${label} ]`;
 
+const isModifiedNewlineKey = (key: blessed.Widgets.Events.IKeyEventArg): boolean => {
+  const sequence = key.sequence ?? "";
+  return (
+    key.full === "S-enter" ||
+    key.full === "S-return" ||
+    key.full === "linefeed" ||
+    sequence === "\n" ||
+    sequence === "\x1b\r" ||
+    sequence === "\x1b[13;2u" ||
+    sequence === "\x1b[27;2;13~" ||
+    ((key.name === "enter" || key.name === "return") && key.shift) ||
+    key.name === "linefeed" ||
+    key.full === "M-enter" ||
+    key.full === "M-return" ||
+    key.full === "C-j"
+  );
+};
+
 export class WizardTuiApp {
-  private readonly server: WizardMcpServer;
+  private readonly service: WizardCompanionService;
   private readonly screen: blessed.Widgets.Screen;
   private readonly conversationBox: blessed.Widgets.BoxElement;
   private readonly promptBox: blessed.Widgets.BoxElement;
@@ -129,8 +124,9 @@ export class WizardTuiApp {
   private readonly statusBox: blessed.Widgets.BoxElement;
   private readonly overlayBox: blessed.Widgets.BoxElement;
   private currentState?: LiveState;
-  private focusArea: FocusArea = "session";
+  private focusArea: FocusArea = "agent";
   private sessionArea: SessionArea = "grid";
+  private sidebarPane: SidebarPane = "input";
   private toolbarIndex = 0;
   private footerIndex = 0;
   private selectedTrackIndex = 0;
@@ -140,6 +136,7 @@ export class WizardTuiApp {
   private readonly conversationLines: string[] = [];
   private readonly statusLines: string[] = [];
   private promptDraft = "";
+  private promptCursorIndex = 0;
   private pendingDelete?: { key: string; deadline: number };
   private pendingOperation?: PendingOperation;
   private cancelRequested = false;
@@ -149,13 +146,22 @@ export class WizardTuiApp {
   private agentHelperText?: string;
   private agentOptions: AgentOption[] = [];
   private selectedAgentOptionIndex = 0;
-  private agentMode: GuidedMode = "prepare";
+  private agentMode: ExtendedGuidedMode = "prepare";
   private guidedState: GuidedSessionState = createGuidedSessionState();
   private readonly guidedHistory: GuidedHistoryEntry[] = [];
   private pausedAction?: PausedAction;
+  private unsubscribeService?: () => void;
+  private promptReturnState?: AgentViewState;
+  private cursorBlinkVisible = true;
+  private cursorBlinkTimer?: NodeJS.Timeout;
+  private readonly panePinnedToBottom: Record<SidebarPane, boolean> = {
+    chat: true,
+    input: true,
+    debug: true,
+  };
 
-  constructor(server?: WizardMcpServer) {
-    this.server = server ?? new WizardMcpServer();
+  constructor(service?: WizardCompanionService) {
+    this.service = service ?? createCompanionService();
     this.screen = blessed.screen({
       smartCSR: true,
       fullUnicode: true,
@@ -170,23 +176,26 @@ export class WizardTuiApp {
       parent: this.screen,
       top: 0,
       left: 0,
-      width: LEFT_WIDTH,
-      bottom: MIN_PROMPT_HEIGHT,
+      width: "100%",
+      bottom: MIN_PROMPT_HEIGHT + MIN_DEBUG_HEIGHT,
       border: "line",
-      label: " Agent ",
+      label: " Chat ",
       tags: true,
+      scrollable: true,
+      alwaysScroll: true,
     });
 
     this.promptBox = blessed.box({
       parent: this.screen,
-      bottom: 0,
+      bottom: MIN_DEBUG_HEIGHT,
       left: 0,
-      width: LEFT_WIDTH,
+      width: "100%",
       height: MIN_PROMPT_HEIGHT,
       border: "line",
       label: " Input ",
       tags: true,
       mouse: false,
+      scrollable: true,
       style: {
         focus: {
           border: {
@@ -198,46 +207,37 @@ export class WizardTuiApp {
 
     this.transportBox = blessed.box({
       parent: this.screen,
-      top: 0,
-      left: LEFT_WIDTH,
-      width: RIGHT_WIDTH,
-      height: 5,
-      border: "line",
-      label: " Session Controls ",
+      hidden: true,
+      width: 0,
+      height: 0,
       tags: true,
     });
 
     this.sessionBox = blessed.box({
       parent: this.screen,
-      top: 5,
-      left: LEFT_WIDTH,
-      width: RIGHT_WIDTH,
-      height: "56%",
-      border: "line",
-      label: " Session View ",
+      hidden: true,
+      width: 0,
+      height: 0,
       tags: true,
       scrollable: true,
     });
 
     this.instructionsBox = blessed.box({
       parent: this.screen,
-      top: "61%",
-      left: LEFT_WIDTH,
-      width: RIGHT_WIDTH,
-      height: 7,
-      border: "line",
-      label: " Instructions ",
+      hidden: true,
+      width: 0,
+      height: 0,
       tags: true,
     });
 
     this.statusBox = blessed.box({
       parent: this.screen,
-      top: "61%+7",
-      left: LEFT_WIDTH,
-      width: RIGHT_WIDTH,
       bottom: 0,
+      left: 0,
+      width: "100%",
+      height: MIN_DEBUG_HEIGHT,
       border: "line",
-      label: " Status / Messages ",
+      label: " Debug Log ",
       tags: true,
       scrollable: true,
       alwaysScroll: true,
@@ -263,12 +263,16 @@ export class WizardTuiApp {
   }
 
   async start(): Promise<void> {
-    this.pushConversation("• Ready. Use `shift+tab` to switch between agent and session.");
-    this.pushConversation("• Press `enter` on a track, clip or scene to select it and jump to chat.");
+    this.pushConversation("• Ready. Sidebar mode active.");
+    this.pushConversation("• Use up/down + enter for suggestions, or pick `Type something else` to type.");
+    this.pushConversation("• Use tab to cycle chat/input/debug and pageup/pagedown to scroll.");
     this.guidedState = createGuidedSessionState();
     this.guidedHistory.length = 0;
     this.openPrepareOptions();
+    this.unsubscribeService = this.service.subscribe((event) => this.handleServiceEvent(event));
     this.pushStatus(`Debug log: ${getDebugLogPath()}`);
+    const catalog = await this.service.getResourceCatalog();
+    this.pushStatus(`Resource catalog: ${catalog.length} entries available.`);
     await this.refreshState("State refreshed");
     this.focusAgent();
   }
@@ -281,11 +285,11 @@ export class WizardTuiApp {
       }
       this.requestPause();
     });
-    this.screen.key(["S-tab"], () => {
+    this.screen.key(["tab", "S-tab"], (_ch, key) => {
       if (this.pendingOperation) {
         return;
       }
-      this.toggleFocus();
+      this.cycleSidebarPane(key.full === "S-tab" ? -1 : 1);
     });
     this.screen.key(["r"], () => {
       if (this.pendingOperation) {
@@ -293,61 +297,40 @@ export class WizardTuiApp {
       }
       void this.safeRun("key:refresh", () => this.refreshState("State refreshed"));
     });
-
-    this.screen.key(["left"], () => {
-      if (this.pendingOperation) {
-        return;
-      }
-      this.focusArea === "session" && this.navigateSession("left");
-    });
-    this.screen.key(["right"], () => {
-      if (this.pendingOperation) {
-        return;
-      }
-      this.focusArea === "session" && this.navigateSession("right");
-    });
     this.screen.key(["up"], () => {
       if (this.pendingOperation) {
         return;
       }
-      if (this.focusArea === "agent" && !this.isPromptOpen) {
+      if (!this.isPromptOpen) {
         this.navigateAgent("up");
-        return;
-      }
-      if (this.focusArea === "session") {
-        this.navigateSession("up");
       }
     });
     this.screen.key(["down"], () => {
       if (this.pendingOperation) {
         return;
       }
-      if (this.focusArea === "agent" && !this.isPromptOpen) {
+      if (!this.isPromptOpen) {
         this.navigateAgent("down");
-        return;
       }
-      if (this.focusArea === "session") {
-        this.navigateSession("down");
-      }
+    });
+    this.screen.key(["pageup"], () => {
+      this.scrollSidebarPane(-4);
+    });
+    this.screen.key(["pagedown"], () => {
+      this.scrollSidebarPane(4);
+    });
+    this.screen.key(["home"], () => {
+      this.scrollSidebarPaneTo("top");
+    });
+    this.screen.key(["end"], () => {
+      this.scrollSidebarPaneTo("bottom");
     });
     this.screen.key(["enter"], () => {
       if (this.pendingOperation) {
         return;
       }
-      if (this.focusArea === "agent" && !this.isPromptOpen) {
+      if (!this.isPromptOpen) {
         void this.safeRun("key:agent-enter", () => this.activateAgentSelection());
-        return;
-      }
-      if (this.focusArea === "session") {
-        void this.safeRun("key:enter", () => this.activateSelection());
-      }
-    });
-    this.screen.key(["backspace"], () => {
-      if (this.pendingOperation) {
-        return;
-      }
-      if (this.focusArea === "session") {
-        void this.safeRun("key:backspace", () => this.handleDeleteKey());
       }
     });
 
@@ -356,12 +339,8 @@ export class WizardTuiApp {
         return;
       }
 
-      if (this.focusArea === "agent" && this.isPromptOpen) {
+      if (this.isPromptOpen) {
         this.handlePromptKeypress(ch, key);
-        return;
-      }
-
-      if (this.focusArea !== "agent" || this.isPromptOpen) {
         return;
       }
 
@@ -385,7 +364,7 @@ export class WizardTuiApp {
         gridRow: this.gridRow,
         gridColumn: this.gridColumn,
       });
-      this.currentState = await this.server.refreshState();
+      this.currentState = await this.service.refreshState();
       this.pendingDelete = undefined;
       this.selectedTrackIndex = clamp(this.selectedTrackIndex, 0, this.trackCount() - 1);
       this.gridRow = clamp(this.gridRow, -1, this.sceneCount() - 1);
@@ -408,9 +387,6 @@ export class WizardTuiApp {
   private renderAll(): void {
     this.renderPromptInput();
     this.renderConversation();
-    this.renderTransport();
-    this.renderSession();
-    this.renderInstructions();
     this.renderStatus();
     this.renderFocus();
     this.renderOverlay();
@@ -419,7 +395,8 @@ export class WizardTuiApp {
 
   private renderConversation(): void {
     const screenHeight = typeof this.screen.height === "number" ? this.screen.height : Number(this.screen.height ?? 0);
-    const innerHeight = Math.max(1, screenHeight - this.currentPromptPanelHeight() - 2);
+    const innerHeight = Math.max(1, screenHeight - this.currentPromptPanelHeight() - this.currentDebugPanelHeight() - 2);
+    const previousScroll = this.conversationBox.getScroll();
 
     this.conversationBox.setContent(
       buildAgentPanelContent({
@@ -427,6 +404,11 @@ export class WizardTuiApp {
         viewportHeight: innerHeight,
       }),
     );
+    if (this.panePinnedToBottom.chat) {
+      this.conversationBox.setScrollPerc(100);
+    } else {
+      this.conversationBox.setScroll(previousScroll);
+    }
   }
 
   private renderTransport(): void {
@@ -451,15 +433,18 @@ export class WizardTuiApp {
 
     this.transportBox.setContent(
       `${buttons.join("  ")}\n` +
-        `Bridge {bold}${getBridgeMode()}{/bold}  Playback ${isPlaying ? "{green-fg}PLAY{/green-fg}" : "{red-fg}STOP{/red-fg}"}  ` +
-        `Track ${selectedTrack?.name ?? "-"}  Scene ${selectedScene?.name ?? "-"}  Focus {bold}${this.focusArea === "agent" ? "Agent" : "Session"}{/bold}`,
+        `Companion {bold}${this.service.describeConnection()}{/bold}  Playback ${isPlaying ? "{green-fg}PLAY{/green-fg}" : "{red-fg}STOP{/red-fg}"}  ` +
+        `Track ${selectedTrack?.name ?? "-"}  Scene ${selectedScene?.name ?? "-"}  Focus {bold}${this.focusArea === "agent" ? "Chat" : "Session"}{/bold}`,
     );
   }
 
   private renderPromptInput(): void {
     const promptHeight = this.currentPromptPanelHeight();
+    const debugHeight = this.currentDebugPanelHeight();
+    const previousScroll = this.promptBox.getScroll();
     this.promptBox.height = promptHeight;
-    this.conversationBox.bottom = promptHeight;
+    this.promptBox.bottom = debugHeight;
+    this.conversationBox.bottom = promptHeight + debugHeight;
     this.promptBox.setContent(
       buildPromptPanelContent({
         question: this.agentQuestion,
@@ -469,8 +454,15 @@ export class WizardTuiApp {
         highlightSelection: this.focusArea === "agent" && !this.isPromptOpen,
         promptDraft: this.promptDraft,
         isPromptOpen: this.isPromptOpen,
+        cursorVisible: this.cursorBlinkVisible,
+        cursorIndex: this.promptCursorIndex,
       }),
     );
+    if (this.panePinnedToBottom.input) {
+      this.promptBox.setScrollPerc(100);
+    } else {
+      this.promptBox.setScroll(previousScroll);
+    }
   }
 
   private renderSession(): void {
@@ -544,7 +536,7 @@ export class WizardTuiApp {
       : "Backspace x2 deletes the selected track, clip or scene when applicable.";
     this.instructionsBox.setContent(
       "- Use shift+tab to switch between agent and session view\n" +
-        "- In agent, use up/down + enter to pick a guided option; press down past the last option to type\n" +
+        "- In chat, use up/down + enter to pick a guided option; press down past the last option to type\n" +
         "- Use arrows to navigate session buttons, tracks, clips and scenes\n" +
         "- Press enter to select a track, clip or scene and jump to chat for changes\n" +
         `- ${deleteHint}`,
@@ -552,19 +544,23 @@ export class WizardTuiApp {
   }
 
   private renderStatus(): void {
-    this.statusBox.setContent(this.statusLines.slice(-8).join("\n"));
+    const previousScroll = this.statusBox.getScroll();
+    this.statusBox.height = this.currentDebugPanelHeight();
+    this.statusBox.setContent(this.statusLines.join("\n"));
+    if (this.panePinnedToBottom.debug) {
+      this.statusBox.setScrollPerc(100);
+    } else {
+      this.statusBox.setScroll(previousScroll);
+    }
   }
 
   private renderFocus(): void {
     const active = { fg: "cyan" };
     const inactive = { fg: "white" };
 
-    this.conversationBox.style.border = this.focusArea === "agent" ? active : inactive;
-    this.promptBox.style.border = this.focusArea === "agent" || this.pendingOperation?.key === "prompt" ? active : inactive;
-    this.transportBox.style.border = this.focusArea === "session" && this.sessionArea === "toolbar" ? active : inactive;
-    this.sessionBox.style.border = this.focusArea === "session" && this.sessionArea === "grid" ? active : inactive;
-    this.instructionsBox.style.border = this.focusArea === "session" && this.sessionArea === "footer" ? active : inactive;
-    this.statusBox.style.border = inactive;
+    this.conversationBox.style.border = this.sidebarPane === "chat" ? active : inactive;
+    this.promptBox.style.border = this.sidebarPane === "input" || this.pendingOperation?.key === "prompt" ? active : inactive;
+    this.statusBox.style.border = this.sidebarPane === "debug" ? active : inactive;
   }
 
   private renderOverlay(): void {
@@ -597,6 +593,8 @@ export class WizardTuiApp {
     debugLog("tui", "focus_agent");
     this.focusArea = "agent";
     this.isPromptOpen = false;
+    this.stopCursorBlink();
+    this.sidebarPane = "input";
     this.screen.focusPush(this.promptBox);
     this.renderAll();
   }
@@ -698,7 +696,7 @@ export class WizardTuiApp {
     if (targetKind === "scene_action") {
       const sceneId = this.getSelectedScene()?.id ?? `scene_${this.selectedSceneIndex() + 1}`;
       await this.withSpinner(`scene_action:${sceneId}`, `Firing scene ${this.selectedSceneIndex() + 1}`, async () => {
-        const result = await this.server.fireScene(this.selectedSceneIndex());
+        const result = await this.service.fireScene(this.selectedSceneIndex());
         this.pushStatus(result.message);
         await this.refreshState();
       });
@@ -731,25 +729,25 @@ export class WizardTuiApp {
 
     await this.withSpinner(`toolbar:${action}`, `Toolbar action ${action}`, async () => {
       if (action === "undo") {
-        const result = await this.server.undoLast();
+        const result = await this.service.undoLast();
         this.pushStatus(result.message);
         await this.refreshState();
         return;
       }
       if (action === "redo") {
-        const result = await this.server.redoLast();
+        const result = await this.service.redoLast();
         this.pushStatus(result.message);
         await this.refreshState();
         return;
       }
       if (action === "tempo_down") {
-        const result = await this.server.setTempo(Math.max(20, bpm - 1));
+        const result = await this.service.setTempo(Math.max(20, bpm - 1));
         this.pushStatus(result.message);
         await this.refreshState();
         return;
       }
       if (action === "tempo_up") {
-        const result = await this.server.setTempo(Math.min(300, bpm + 1));
+        const result = await this.service.setTempo(Math.min(300, bpm + 1));
         this.pushStatus(result.message);
         await this.refreshState();
         return;
@@ -765,14 +763,14 @@ export class WizardTuiApp {
     await this.withSpinner(`footer:${action}`, `Footer action ${action}`, async () => {
       if (action === "add_track") {
         const name = `Track ${this.trackCount() + 1}`;
-        const result = await this.server.applyOperation("create_track", { name });
+        const result = await this.service.applyOperation("create_track", { name });
         this.pushStatus(result.message);
         await this.refreshState();
         return;
       }
 
       const name = `Scene ${this.sceneCount() + 1}`;
-      const result = await this.server.applyOperation("create_scene", { name });
+      const result = await this.service.applyOperation("create_scene", { name });
       this.pushStatus(result.message);
       await this.refreshState();
     });
@@ -822,7 +820,7 @@ export class WizardTuiApp {
         key: `track:${track.id}`,
         label: `track ${track.name}`,
         run: async () => {
-          const result = await this.server.applyOperation("delete_track", { trackRef: track.id });
+          const result = await this.service.applyOperation("delete_track", { trackRef: track.id });
           this.pushStatus(result.message);
         },
       };
@@ -833,7 +831,7 @@ export class WizardTuiApp {
         key: `clip:${track.id}:${clipId}`,
         label: `clip ${track.name}/${clipId}`,
         run: async () => {
-          const result = await this.server.applyOperation("delete_clip", {
+          const result = await this.service.applyOperation("delete_clip", {
             trackRef: track.id,
             clipRef: clipId,
           });
@@ -847,7 +845,7 @@ export class WizardTuiApp {
         key: `scene:${scene.id}`,
         label: `scene ${scene.name}`,
         run: async () => {
-          const result = await this.server.applyOperation("delete_scene", { sceneRef: scene.id });
+          const result = await this.service.applyOperation("delete_scene", { sceneRef: scene.id });
           this.pushStatus(result.message);
         },
       };
@@ -864,9 +862,18 @@ export class WizardTuiApp {
       .filter(Boolean)
       .join(" ");
     this.promptDraft = "";
+    this.promptCursorIndex = 0;
     this.isPromptOpen = false;
+    this.stopCursorBlink();
 
     if (!input) {
+      this.focusAgent();
+      return;
+    }
+
+    if (this.agentMode === "custom_input" && input.toLowerCase() === "go back") {
+      this.restorePromptReturnState();
+      this.pushConversation("• Back to suggestions.");
       this.focusAgent();
       return;
     }
@@ -886,20 +893,20 @@ export class WizardTuiApp {
       this.pushStatus(message);
     }
 
-    this.focusAgent();
+    if (!this.isPromptOpen) {
+      this.focusAgent();
+    } else {
+      this.renderAll();
+    }
   }
 
   private async executePrompt(input: string): Promise<string> {
     debugLog("tui", "execute_prompt:start", {
       input,
-      selectedTrack: this.getSelectedTrack()?.id,
-      selectedScene: this.getSelectedScene()?.id,
-      selectedClipId: this.selectedClipId(),
+      selectedTrack: undefined,
+      selectedScene: undefined,
+      selectedClipId: undefined,
     });
-    const selectedTrack = this.getSelectedTrack();
-    const selectedScene = this.getSelectedScene();
-    const selectedClipId = this.selectedClipId();
-    const promptRoleAlias = PROMPT_ROLE_ALIASES[input];
     const guidedResponse = await this.tryHandleGuidedInput(input);
 
     if (guidedResponse) {
@@ -922,124 +929,13 @@ export class WizardTuiApp {
     if (input === "play") {
       return this.playToggle();
     }
-    if (input === "stop") {
-      const result = await this.server.stopPlayback();
-      return result.message;
-    }
-    if (input === "undo") {
-      return (await this.server.undoLast()).message;
-    }
-    if (input === "redo") {
-      return (await this.server.redoLast()).message;
-    }
-    if (input === "scene play") {
-      return (await this.server.fireScene(this.selectedSceneIndex())).message;
-    }
-    if (input === "clip play") {
-      if (!selectedTrack) throw new Error("No selected track");
-      return (await this.server.fireClip(selectedTrack.id, selectedClipId)).message;
-    }
-    if (promptRoleAlias) {
-      if (!selectedTrack) throw new Error("No selected track");
-      return (
-        await this.server.applyOperation("select_instrument", {
-          trackRef: selectedTrack.id,
-          value: promptRoleAlias,
-        })
-      ).message;
-    }
-    if (input === "create track") {
-      const name = `Track ${this.trackCount() + 1}`;
-      return (await this.server.applyOperation("create_track", { name })).message;
-    }
-    if (input.startsWith("create track ")) {
-      const name = input.slice("create track ".length).trim();
-      if (!name) {
-        throw new Error("Track name cannot be empty");
-      }
-      return (await this.server.applyOperation("create_track", { name })).message;
-    }
-    if (input === "create scene") {
-      const name = `Scene ${this.sceneCount() + 1}`;
-      return (await this.server.applyOperation("create_scene", { name })).message;
-    }
-    if (input.startsWith("create scene ")) {
-      const name = input.slice("create scene ".length).trim();
-      if (!name) {
-        throw new Error("Scene name cannot be empty");
-      }
-      return (await this.server.applyOperation("create_scene", { name })).message;
-    }
-    if (input === "delete track") {
-      if (!selectedTrack) throw new Error("No selected track");
-      return (await this.server.applyOperation("delete_track", { trackRef: selectedTrack.id })).message;
-    }
-    if (input === "delete clip") {
-      if (!selectedTrack) throw new Error("No selected track");
-      return (
-        await this.server.applyOperation("delete_clip", {
-          trackRef: selectedTrack.id,
-          clipRef: selectedClipId,
-        })
-      ).message;
-    }
-    if (input === "delete scene") {
-      if (!selectedScene) throw new Error("No selected scene");
-      return (await this.server.applyOperation("delete_scene", { sceneRef: selectedScene.id })).message;
-    }
-    if (input.startsWith("instrument ")) {
-      if (!selectedTrack) throw new Error("No selected track");
-      const value = input.slice("instrument ".length).trim();
-      return (
-        await this.server.applyOperation("select_instrument", {
-          trackRef: selectedTrack.id,
-          value,
-        })
-      ).message;
-    }
-    if (input.startsWith("tempo ")) {
-      const raw = input.slice("tempo ".length).trim();
-      const currentBpm = this.currentState?.transport.bpm ?? 120;
-      const bpm = raw === "+" ? currentBpm + 1 : raw === "-" ? currentBpm - 1 : Number(raw);
-      if (!Number.isFinite(bpm)) {
-        throw new Error(`Invalid tempo value: ${raw}`);
-      }
-      return (await this.server.setTempo(clamp(Math.round(bpm), 20, 300))).message;
-    }
-    if (input.startsWith("create clip")) {
-      if (!selectedTrack) throw new Error("No selected track");
-      const barsRaw = input.slice("create clip".length).trim();
-      const bars = barsRaw ? Number(barsRaw) : 4;
-      if (!Number.isFinite(bars) || bars <= 0) {
-        throw new Error(`Invalid bar count: ${barsRaw}`);
-      }
-      return (
-        await this.server.applyOperation("create_midi_clip", {
-          trackRef: selectedTrack.id,
-          clipRef: selectedClipId,
-          bars,
-        })
-      ).message;
-    }
-    if (input.startsWith("pattern ")) {
-      if (!selectedTrack) throw new Error("No selected track");
-      const parts = input.slice("pattern ".length).trim().split(/\s+/);
-      const maybePattern = parts[0] as BasicPatternName;
-      if (!BASIC_PATTERNS.includes(maybePattern)) {
-        throw new Error(`Unknown pattern: ${maybePattern}`);
-      }
-      const bars = parts[1] ? Number(parts[1]) : undefined;
-      return (
-        await this.server.applyOperation("write_basic_notes", {
-          trackRef: selectedTrack.id,
-          clipRef: selectedClipId,
-          pattern: maybePattern,
-          bars,
-        })
-      ).message;
-    }
 
-    throw new Error(`Unknown prompt command: ${input}`);
+    const response = await this.service.submitPrompt(input, {
+      selectedTrackId: undefined,
+      selectedSceneId: undefined,
+      selectedClipId: undefined,
+    });
+    return response.message;
   }
 
   private currentGridTargetKind(): "track" | "clip" | "scene" | "scene_action" {
@@ -1115,7 +1011,7 @@ export class WizardTuiApp {
 
   private async playToggle(): Promise<string> {
     if (this.isTransportPlaying()) {
-      const result = await this.server.stopPlayback();
+      const result = await this.service.stopPlayback();
       return result.message;
     }
 
@@ -1123,16 +1019,16 @@ export class WizardTuiApp {
     const selectedClipId = this.selectedClipId();
     const selectedClip = selectedTrack?.clips[selectedClipId];
     if (selectedTrack && selectedClip) {
-      const result = await this.server.fireClip(selectedTrack.id, selectedClipId);
+      const result = await this.service.fireClip(selectedTrack.id, selectedClipId);
       return result.message;
     }
 
     const selectedScene = this.getSelectedScene();
     if (selectedScene) {
-      const sceneState = await this.server.refreshState();
+      const sceneState = await this.service.refreshState();
       const hasSceneClip = sceneState.trackOrder.some((trackId) => Boolean(sceneState.tracks[trackId].clips[`clip_${selectedScene.index}`]));
       if (hasSceneClip) {
-        const result = await this.server.fireScene(selectedScene.index);
+        const result = await this.service.fireScene(selectedScene.index);
         return result.message;
       }
     }
@@ -1143,7 +1039,7 @@ export class WizardTuiApp {
       );
 
       if (firstSceneIndex >= 0) {
-        const result = await this.server.fireScene(firstSceneIndex);
+        const result = await this.service.fireScene(firstSceneIndex);
         return result.message;
       }
     }
@@ -1217,7 +1113,7 @@ export class WizardTuiApp {
     }
 
     for (let index = 0; index < entry.undoSteps; index += 1) {
-      const result = await this.server.undoLast();
+      const result = await this.service.undoLast();
       this.pushStatus(result.message);
     }
 
@@ -1317,13 +1213,16 @@ export class WizardTuiApp {
     question: string,
     helperText: string | undefined,
     options: AgentOption[],
-    mode: GuidedMode,
+    mode: ExtendedGuidedMode,
   ): void {
     this.agentQuestion = question;
     this.agentHelperText = helperText;
-    this.agentOptions = options;
+    this.agentOptions =
+      mode === "free" || mode === "custom_input"
+        ? options
+        : [...options, { id: "type_something_else", label: "Type something else", enabled: true }];
     this.agentMode = mode;
-    this.selectedAgentOptionIndex = this.defaultAgentOptionIndex(options);
+    this.selectedAgentOptionIndex = this.defaultAgentOptionIndex(this.agentOptions);
   }
 
   private openPrepareOptions(): void {
@@ -1463,6 +1362,17 @@ export class WizardTuiApp {
     );
   }
 
+  private openCustomPromptEntry(): void {
+    this.promptReturnState = this.captureAgentViewState();
+    this.setAgentPrompt(
+      "",
+      undefined,
+      [],
+      "custom_input",
+    );
+    this.openPromptEditor();
+  }
+
   private openPausedActionOptions(): void {
     const cleanupUndoSteps = this.pausedAction?.cleanupUndoSteps ?? 0;
     this.setAgentPrompt(
@@ -1498,6 +1408,11 @@ export class WizardTuiApp {
       return `${choice.label} is disabled for now. I left it visible to make the roadmap explicit.`;
     }
 
+    if (choice.id === "type_something_else") {
+      this.openCustomPromptEntry();
+      return "Type something or `go back`.";
+    }
+
     if (choice.id === "paused_continue") {
       if (!this.pausedAction) {
         return "No paused action.";
@@ -1521,7 +1436,7 @@ export class WizardTuiApp {
       const paused = this.pausedAction;
       return this.withSpinner("prompt", "Clean up paused action", async () => {
         for (let index = 0; index < paused.cleanupUndoSteps; index += 1) {
-          const result = await this.server.undoLast();
+          const result = await this.service.undoLast();
           this.pushStatus(result.message);
         }
         this.restoreGuidedSnapshot(paused.snapshot);
@@ -1538,7 +1453,7 @@ export class WizardTuiApp {
         choice.label,
         snapshot,
         async (hooks) => {
-          const messages = await clearSessionForGuidedStart(this.server, hooks);
+          const messages = await clearSessionForGuidedStart(this.service, hooks);
           messages.forEach((message) => this.pushStatus(message));
           return "Cleared the current set. Pick a genre.";
         },
@@ -1596,7 +1511,7 @@ export class WizardTuiApp {
         choice.label,
         snapshot,
         async (hooks) => {
-          const messages = await applyFoundationStep(this.server, genreId, this.guidedState, stepId, hooks);
+          const messages = await applyFoundationStep(this.service, genreId, this.guidedState, stepId, hooks);
           messages.forEach((message) => this.pushStatus(message));
           return `${choice.label} done.`;
         },
@@ -1621,7 +1536,7 @@ export class WizardTuiApp {
         choice.label,
         snapshot,
         async (hooks) => {
-          const messages = await applyContinuationStep(this.server, genreId, this.guidedState, stepId, hooks);
+          const messages = await applyContinuationStep(this.service, genreId, this.guidedState, stepId, hooks);
           messages.forEach((message) => this.pushStatus(message));
           return `${choice.label} done.`;
         },
@@ -1651,7 +1566,7 @@ export class WizardTuiApp {
         choice.label,
         snapshot,
         async (hooks) => {
-          const messages = await applyChainChoice(this.server, genreId, chainId, hooks);
+          const messages = await applyChainChoice(this.service, genreId, chainId, hooks);
           messages.forEach((message) => this.pushStatus(message));
           return `${choice.label} selected.`;
         },
@@ -1703,10 +1618,17 @@ export class WizardTuiApp {
         highlightSelection: this.focusArea === "agent" && !this.isPromptOpen,
         promptDraft: this.promptDraft,
         isPromptOpen: this.isPromptOpen,
+        cursorVisible: this.cursorBlinkVisible,
       },
       MIN_PROMPT_HEIGHT,
       MAX_PROMPT_HEIGHT,
     );
+  }
+
+  private currentDebugPanelHeight(): number {
+    const screenHeight = typeof this.screen.height === "number" ? this.screen.height : Number(this.screen.height ?? 0);
+    const proposed = Math.floor(screenHeight * DEBUG_HEIGHT_RATIO);
+    return clamp(proposed, MIN_DEBUG_HEIGHT, MAX_DEBUG_HEIGHT);
   }
 
   private pushConversation(message: string): void {
@@ -1714,9 +1636,29 @@ export class WizardTuiApp {
     debugLog("tui:conversation", message);
   }
 
-  private pushStatus(message: string): void {
+  private pushStatus(message: string, options?: { log?: boolean }): void {
     this.statusLines.push(`[${new Date().toLocaleTimeString()}] ${message}`);
-    debugLog("tui:status", message);
+    if (options?.log !== false) {
+      debugLog("tui:status", message);
+    }
+  }
+
+  private handleServiceEvent(event: WizardCompanionEvent): void {
+    if (event.type === "debug") {
+      this.pushStatus(`[${event.scope}] ${event.message}`, { log: false });
+      this.renderAll();
+      return;
+    }
+
+    if (event.type === "operation") {
+      const marker = event.phase === "start" ? "▶" : event.phase === "success" ? "✓" : "✕";
+      this.pushStatus(`${marker} ${event.action}`, { log: false });
+      this.renderAll();
+      return;
+    }
+
+    this.pushStatus(event.message, { log: false });
+    this.renderAll();
   }
 
   private async safeRun(label: string, fn: () => Promise<void>): Promise<void> {
@@ -1781,20 +1723,15 @@ export class WizardTuiApp {
   private handlePromptKeypress(ch: string | undefined, key: blessed.Widgets.Events.IKeyEventArg): void {
     if (key.full === "escape") {
       this.promptDraft = "";
+      this.promptCursorIndex = 0;
       this.isPromptOpen = false;
+      this.stopCursorBlink();
       this.focusAgent();
       return;
     }
 
-    if (key.name === "up" && this.promptDraft.length === 0 && this.agentOptions.length > 0) {
-      this.isPromptOpen = false;
-      this.selectedAgentOptionIndex = this.agentOptions.length - 1;
-      this.renderAll();
-      return;
-    }
-
-    if ((key.full === "S-enter" || (key.shift && key.name === "enter")) || key.full === "M-enter" || key.full === "C-j") {
-      this.promptDraft += "\n";
+    if (isModifiedNewlineKey(key)) {
+      this.insertPromptText("\n");
       this.renderAll();
       return;
     }
@@ -1804,26 +1741,172 @@ export class WizardTuiApp {
       return;
     }
 
+    if ((key.meta && key.name === "left") || key.full === "M-left" || key.full === "M-b") {
+      this.movePromptCursorByWord(-1);
+      return;
+    }
+
+    if ((key.meta && key.name === "right") || key.full === "M-right" || key.full === "M-f") {
+      this.movePromptCursorByWord(1);
+      return;
+    }
+
+    if (key.name === "left") {
+      this.movePromptCursorByChar(-1);
+      return;
+    }
+
+    if (key.name === "right") {
+      this.movePromptCursorByChar(1);
+      return;
+    }
+
+    if (key.name === "up") {
+      this.movePromptCursorVertically(-1);
+      return;
+    }
+
+    if (key.name === "down") {
+      this.movePromptCursorVertically(1);
+      return;
+    }
+
+    if (key.name === "home" || key.full === "C-a") {
+      this.movePromptCursorToLineEdge("start");
+      return;
+    }
+
+    if (key.name === "end" || key.full === "C-e") {
+      this.movePromptCursorToLineEdge("end");
+      return;
+    }
+
     if (key.name === "backspace") {
-      this.promptDraft = Array.from(this.promptDraft).slice(0, -1).join("");
-      this.renderAll();
+      this.deletePromptBackward();
+      return;
+    }
+
+    if (key.name === "delete") {
+      this.deletePromptForward();
       return;
     }
 
     if (key.ctrl && key.name === "u") {
       this.promptDraft = "";
+      this.promptCursorIndex = 0;
       this.renderAll();
       return;
     }
 
-    if (key.name === "tab" || key.name === "down" || key.name === "left" || key.name === "right") {
+    if (key.name === "tab") {
       return;
     }
 
     if (ch && /^[\x20-\x7E]$/.test(ch)) {
-      this.promptDraft += ch;
-      this.renderAll();
+      this.insertPromptText(ch);
     }
+  }
+
+  private insertPromptText(text: string): void {
+    this.promptDraft =
+      `${this.promptDraft.slice(0, this.promptCursorIndex)}${text}${this.promptDraft.slice(this.promptCursorIndex)}`;
+    this.promptCursorIndex += text.length;
+    this.panePinnedToBottom.input = true;
+    this.renderAll();
+  }
+
+  private deletePromptBackward(): void {
+    if (this.promptCursorIndex === 0) {
+      return;
+    }
+    this.promptDraft =
+      `${this.promptDraft.slice(0, this.promptCursorIndex - 1)}${this.promptDraft.slice(this.promptCursorIndex)}`;
+    this.promptCursorIndex -= 1;
+    this.renderAll();
+  }
+
+  private deletePromptForward(): void {
+    if (this.promptCursorIndex >= this.promptDraft.length) {
+      return;
+    }
+    this.promptDraft =
+      `${this.promptDraft.slice(0, this.promptCursorIndex)}${this.promptDraft.slice(this.promptCursorIndex + 1)}`;
+    this.renderAll();
+  }
+
+  private movePromptCursorByChar(delta: -1 | 1): void {
+    this.promptCursorIndex = clamp(this.promptCursorIndex + delta, 0, this.promptDraft.length);
+    this.panePinnedToBottom.input = true;
+    this.renderAll();
+  }
+
+  private movePromptCursorToLineEdge(edge: "start" | "end"): void {
+    const { lineStart, lineEnd } = this.getPromptCursorLineBounds();
+    this.promptCursorIndex = edge === "start" ? lineStart : lineEnd;
+    this.panePinnedToBottom.input = true;
+    this.renderAll();
+  }
+
+  private movePromptCursorVertically(delta: -1 | 1): void {
+    const lines = this.promptDraft.split("\n");
+    const { lineIndex, column } = this.getPromptCursorPosition();
+    const targetLineIndex = clamp(lineIndex + delta, 0, Math.max(lines.length - 1, 0));
+    const targetLineLength = (lines[targetLineIndex] ?? "").length;
+    const targetColumn = clamp(column, 0, targetLineLength);
+
+    let nextIndex = 0;
+    for (let index = 0; index < targetLineIndex; index += 1) {
+      nextIndex += (lines[index] ?? "").length + 1;
+    }
+    nextIndex += targetColumn;
+
+    this.promptCursorIndex = clamp(nextIndex, 0, this.promptDraft.length);
+    this.panePinnedToBottom.input = true;
+    this.renderAll();
+  }
+
+  private movePromptCursorByWord(direction: -1 | 1): void {
+    if (direction < 0) {
+      let index = this.promptCursorIndex;
+      while (index > 0 && /\s/.test(this.promptDraft[index - 1] ?? "")) {
+        index -= 1;
+      }
+      while (index > 0 && !/\s/.test(this.promptDraft[index - 1] ?? "")) {
+        index -= 1;
+      }
+      this.promptCursorIndex = index;
+    } else {
+      let index = this.promptCursorIndex;
+      while (index < this.promptDraft.length && /\s/.test(this.promptDraft[index] ?? "")) {
+        index += 1;
+      }
+      while (index < this.promptDraft.length && !/\s/.test(this.promptDraft[index] ?? "")) {
+        index += 1;
+      }
+      this.promptCursorIndex = index;
+    }
+
+    this.panePinnedToBottom.input = true;
+    this.renderAll();
+  }
+
+  private getPromptCursorPosition(): { lineIndex: number; column: number } {
+    const beforeCursor = this.promptDraft.slice(0, this.promptCursorIndex);
+    const lines = beforeCursor.split("\n");
+    return {
+      lineIndex: lines.length - 1,
+      column: lines.at(-1)?.length ?? 0,
+    };
+  }
+
+  private getPromptCursorLineBounds(): { lineStart: number; lineEnd: number } {
+    const beforeCursor = this.promptDraft.slice(0, this.promptCursorIndex);
+    const lineStart = beforeCursor.lastIndexOf("\n") + 1;
+    const nextBreak = this.promptDraft.indexOf("\n", this.promptCursorIndex);
+    return {
+      lineStart,
+      lineEnd: nextBreak === -1 ? this.promptDraft.length : nextBreak,
+    };
   }
 
   private defaultAgentOptionIndex(options: AgentOption[]): number {
@@ -1832,42 +1915,30 @@ export class WizardTuiApp {
   }
 
   private navigateAgent(direction: "up" | "down"): void {
-    const hasPromptChoice = this.agentOptions.length > 0;
-    const maxIndex = hasPromptChoice ? this.agentOptions.length : Math.max(this.agentOptions.length - 1, 0);
-
     if (this.agentOptions.length === 0) {
       return;
     }
 
     if (direction === "up") {
-      this.selectedAgentOptionIndex = clamp(this.selectedAgentOptionIndex - 1, 0, maxIndex);
+      this.selectedAgentOptionIndex = clamp(this.selectedAgentOptionIndex - 1, 0, this.agentOptions.length - 1);
     } else {
-      if (hasPromptChoice && this.selectedAgentOptionIndex >= this.agentOptions.length - 1) {
-        this.selectedAgentOptionIndex = this.agentOptions.length;
-        this.openPromptEditor();
-        return;
-      }
-      this.selectedAgentOptionIndex = clamp(this.selectedAgentOptionIndex + 1, 0, maxIndex);
+      this.selectedAgentOptionIndex = clamp(this.selectedAgentOptionIndex + 1, 0, this.agentOptions.length - 1);
     }
 
     this.renderAll();
   }
 
   private async activateAgentSelection(): Promise<void> {
-    if (this.agentOptions.length > 0 && this.selectedAgentOptionIndex === this.agentOptions.length) {
-      this.openPromptEditor();
-      return;
-    }
-
     const option = this.agentOptions[this.selectedAgentOptionIndex];
     if (!option) {
       this.openPromptEditor();
       return;
     }
 
-    this.pushConversation(`> ${option.label}`);
-
     try {
+      if (option.id !== "type_something_else" && option.id !== "prompt_go_back") {
+        this.pushConversation(`> ${option.label}`);
+      }
       const response = await this.tryHandleGuidedInput(option.id);
       if (response) {
         this.pushConversation(`• ${response}`);
@@ -1889,16 +1960,92 @@ export class WizardTuiApp {
   private openPromptEditor(seed = ""): void {
     this.focusArea = "agent";
     this.isPromptOpen = true;
+    this.sidebarPane = "input";
     this.promptDraft = seed;
-    if (this.agentOptions.length > 0) {
-      this.selectedAgentOptionIndex = this.agentOptions.length;
-    }
+    this.promptCursorIndex = seed.length;
+    this.selectedAgentOptionIndex = -1;
+    this.panePinnedToBottom.input = true;
+    this.startCursorBlink();
     this.renderAll();
     this.screen.focusPush(this.promptBox);
   }
 
+  private cycleSidebarPane(direction: -1 | 1): void {
+    const panes: SidebarPane[] = ["chat", "input", "debug"];
+    const currentIndex = panes.indexOf(this.sidebarPane);
+    const nextIndex = (currentIndex + direction + panes.length) % panes.length;
+    this.sidebarPane = panes[nextIndex];
+    this.renderAll();
+  }
+
+  private scrollSidebarPane(amount: number): void {
+    const pane = this.sidebarPane;
+    const target = pane === "chat" ? this.conversationBox : pane === "debug" ? this.statusBox : this.promptBox;
+    if (amount < 0) {
+      this.panePinnedToBottom[pane] = false;
+    }
+    target.scroll(amount);
+    this.screen.render();
+  }
+
+  private scrollSidebarPaneTo(edge: "top" | "bottom"): void {
+    const pane = this.sidebarPane;
+    const target = pane === "chat" ? this.conversationBox : pane === "debug" ? this.statusBox : this.promptBox;
+    if (edge === "top") {
+      this.panePinnedToBottom[pane] = false;
+      target.setScroll(0);
+    } else {
+      this.panePinnedToBottom[pane] = true;
+      target.setScrollPerc(100);
+    }
+    this.screen.render();
+  }
+
   private shutdown(): void {
+    this.unsubscribeService?.();
+    this.stopCursorBlink();
     this.screen.destroy();
     process.exit(0);
+  }
+
+  private captureAgentViewState(): AgentViewState {
+    return {
+      question: this.agentQuestion,
+      helperText: this.agentHelperText,
+      options: this.agentOptions.map((option) => ({ ...option })),
+      mode: this.agentMode,
+      selectedIndex: this.selectedAgentOptionIndex,
+    };
+  }
+
+  private restoreAgentViewState(state: AgentViewState): void {
+    this.agentQuestion = state.question;
+    this.agentHelperText = state.helperText;
+    this.agentOptions = state.options.map((option) => ({ ...option }));
+    this.agentMode = state.mode;
+    this.selectedAgentOptionIndex = state.selectedIndex;
+    this.renderAll();
+  }
+
+  private restorePromptReturnState(): void {
+    if (this.promptReturnState) {
+      this.restoreAgentViewState(this.promptReturnState);
+      this.promptReturnState = undefined;
+      return;
+    }
+    this.openPrepareOptions();
+  }
+
+  private startCursorBlink(): void {
+    this.stopCursorBlink();
+    this.cursorBlinkVisible = true;
+  }
+
+  private stopCursorBlink(): void {
+    if (this.cursorBlinkTimer) {
+      clearInterval(this.cursorBlinkTimer);
+      this.cursorBlinkTimer = undefined;
+    }
+    this.cursorBlinkVisible = true;
   }
 }

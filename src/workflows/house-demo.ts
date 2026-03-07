@@ -1,4 +1,4 @@
-import { WizardMcpServer } from "../mcp/server.js";
+import { WizardSessionController } from "../companion/types.js";
 import { BasicPatternName, InstrumentRole } from "../types.js";
 
 type HouseTrackSpec = {
@@ -55,7 +55,7 @@ const HOUSE_SCENES: HouseSceneSpec[] = [
   },
 ];
 
-export const buildHouseDemo = async (server: WizardMcpServer): Promise<string[]> => {
+export const buildHouseDemo = async (server: WizardSessionController): Promise<string[]> => {
   const messages: string[] = [];
 
   await server.setTempo(124);

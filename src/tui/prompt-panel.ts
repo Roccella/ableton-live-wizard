@@ -11,7 +11,8 @@ type BuildPromptPanelContentParams = {
   highlightSelection: boolean;
   promptDraft: string;
   isPromptOpen: boolean;
-  promptChoiceLabel?: string;
+  cursorVisible?: boolean;
+  cursorIndex?: number;
 };
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -50,7 +51,8 @@ export const buildPromptPanelLines = ({
   highlightSelection,
   promptDraft,
   isPromptOpen,
-  promptChoiceLabel = "Type something else",
+  cursorVisible = true,
+  cursorIndex,
 }: BuildPromptPanelContentParams): string[] => {
   const lines: string[] = [];
 
@@ -58,7 +60,7 @@ export const buildPromptPanelLines = ({
     lines.push(`{bold}${question}{/bold}`);
   }
 
-  if (helperText && options.length === 0) {
+  if (helperText && (options.length === 0 || isPromptOpen)) {
     lines.push(`{gray-fg}${helperText}{/gray-fg}`);
   }
 
@@ -66,40 +68,26 @@ export const buildPromptPanelLines = ({
     lines.push(renderOptionLine(option, index, selectedIndex, highlightSelection));
   });
 
-  const promptIndex = options.length;
-  const promptPrefix = `${promptIndex + 1}.`;
-
-  if (options.length > 0) {
-    if (isPromptOpen) {
-      const draftLines = promptDraft.length > 0 ? promptDraft.split("\n") : [""];
-      const lastIndex = draftLines.length - 1;
-      draftLines.forEach((line, index) => {
-        if (index === 0) {
-          lines.push(`${promptPrefix} ${index === lastIndex ? `${line}█` : line}`);
-          return;
-        }
-        lines.push(`   ${index === lastIndex ? `${line}█` : line}`);
-      });
-    } else {
-      lines.push(
-        renderOptionLine(
-          { label: promptChoiceLabel, enabled: true },
-          promptIndex,
-          selectedIndex,
-          highlightSelection,
-          true,
-        ),
-      );
-    }
-  } else {
+  if (isPromptOpen || options.length === 0 || promptDraft.length > 0) {
     const draftLines = promptDraft.length > 0 ? promptDraft.split("\n") : [""];
-    if (lines.length > 0) {
+    if (lines.length > 0 && isPromptOpen) {
       lines.push("");
     }
     if (isPromptOpen) {
-      const lastIndex = draftLines.length - 1;
+      const normalizedCursorIndex = clamp(cursorIndex ?? promptDraft.length, 0, promptDraft.length);
+      const cursorLineIndex = promptDraft.slice(0, normalizedCursorIndex).split("\n").length - 1;
+      const cursorColumn = promptDraft.slice(0, normalizedCursorIndex).split("\n").at(-1)?.length ?? 0;
+
       draftLines.forEach((line, index) => {
-        lines.push(index === lastIndex ? `${line}█` : line);
+        let renderedLine = line;
+        if (index === cursorLineIndex) {
+          if (cursorColumn >= line.length) {
+            renderedLine = `${line}${cursorVisible ? "█" : " "}`;
+          } else if (cursorVisible) {
+            renderedLine = `${line.slice(0, cursorColumn)}█${line.slice(cursorColumn + 1)}`;
+          }
+        }
+        lines.push(index === 0 ? `> ${renderedLine}` : `  ${renderedLine}`);
       });
     } else if (promptDraft.length > 0) {
       draftLines.forEach((line) => lines.push(line));

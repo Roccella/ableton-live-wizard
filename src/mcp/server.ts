@@ -1,4 +1,5 @@
 import { isInstrumentRole } from "../catalog/instrument-role-catalog.js";
+import { WizardSessionController } from "../companion/types.js";
 import { createLiveBridge } from "../live-bridge/factory.js";
 import { LiveBridge } from "../live-bridge/types.js";
 import { generateBasicPattern } from "../music/basic-patterns.js";
@@ -100,7 +101,7 @@ const parseSceneRef = (state: LiveState, sceneRef: string): { id: string; index:
   throw new Error(`Scene not found: ${sceneRef}`);
 };
 
-export class WizardMcpServer {
+export class WizardMcpServer implements WizardSessionController {
   private bridge: LiveBridge;
   private loopBuilder: LoopBuilderWorkflow;
   private lastState?: LiveState;
@@ -130,45 +131,34 @@ export class WizardMcpServer {
     return this.getState(true);
   }
 
+  private async getPlanState(): Promise<LiveState> {
+    if (this.lastState) {
+      return this.lastState;
+    }
+    return this.refreshState();
+  }
+
   async previewOperation(type: OperationType, payload: unknown): Promise<string> {
-    const state = await this.refreshState();
+    const state = await this.getPlanState();
     const plan = this.buildPlan(type, payload, state);
     debugLog("server", "preview_operation", { type, plan });
     return this.bridge.previewOperation(plan);
   }
 
   async applyOperation(type: OperationType, payload: unknown): Promise<OperationResult> {
-    const state = await this.refreshState();
+    const state = await this.getPlanState();
     const plan = this.buildPlan(type, payload, state);
     debugLog("server", "apply_operation:start", { type, plan });
     const result = await this.bridge.applyOperation(plan);
     debugLog("server", "apply_operation:success", { type, result });
-
-    try {
-      const nextState = await this.refreshState();
-      return {
-        ...result,
-        stateVersionHint: nextState.refreshedAt,
-      };
-    } catch {
-      return result;
-    }
+    return result;
   }
 
   async undoLast(): Promise<OperationResult> {
     debugLog("server", "undo:start");
     const result = await this.bridge.undoLast();
     debugLog("server", "undo:success", result);
-
-    try {
-      const nextState = await this.refreshState();
-      return {
-        ...result,
-        stateVersionHint: nextState.refreshedAt,
-      };
-    } catch {
-      return result;
-    }
+    return result;
   }
 
   async redoLast(): Promise<OperationResult> {
@@ -179,16 +169,7 @@ export class WizardMcpServer {
 
     const result = await (this.bridge as LiveBridge & { redoLast: () => Promise<OperationResult> }).redoLast();
     debugLog("server", "redo:success", result);
-
-    try {
-      const nextState = await this.refreshState();
-      return {
-        ...result,
-        stateVersionHint: nextState.refreshedAt,
-      };
-    } catch {
-      return result;
-    }
+    return result;
   }
 
   async startPlayback(): Promise<OperationResult> {

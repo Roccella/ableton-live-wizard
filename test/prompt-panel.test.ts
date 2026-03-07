@@ -9,7 +9,7 @@ test("prompt panel renders question, options and input in order", () => {
     options: [
       { label: "House", enabled: true },
       { label: "Drum n bass", enabled: true },
-      { label: "Other", enabled: false },
+      { label: "Type something else", enabled: true },
     ],
     selectedIndex: 1,
     highlightSelection: true,
@@ -21,8 +21,7 @@ test("prompt panel renders question, options and input in order", () => {
   assert.match(lines[0] ?? "", /How do you want to start/);
   assert.match(lines[1] ?? "", /1\./);
   assert.match(lines[2] ?? "", /cyan-bg/);
-  assert.match(lines[3] ?? "", /disabled/);
-  assert.match(lines[4] ?? "", /Type something else/);
+  assert.match(lines[3] ?? "", /Type something else/);
 });
 
 test("prompt panel grows with options and prompt draft", () => {
@@ -56,7 +55,55 @@ test("prompt panel grows with options and prompt draft", () => {
     14,
   );
 
-  assert.match(lines[3] ?? "", /^3\./);
+  assert.match(lines[4] ?? "", /^$/);
+  assert.match(lines[5] ?? "", /^> /);
   assert.match(lines.at(-1) ?? "", /█/);
   assert.ok(height > 6);
+});
+
+test("prompt panel hides the fallback label once free typing starts", () => {
+  const lines = buildPromptPanelLines({
+    question: undefined,
+    helperText: undefined,
+    options: [],
+    selectedIndex: -1,
+    highlightSelection: true,
+    promptDraft: "make it darker",
+    isPromptOpen: true,
+  });
+
+  assert.equal(lines.some((line) => line.includes("Type something else")), false);
+  assert.equal(lines.some((line) => line.includes("Go back")), false);
+  assert.match(lines.at(-1) ?? "", /^> make it darker█$/);
+});
+
+test("prompt panel can render the cursor inside the line, not only at the end", () => {
+  const lines = buildPromptPanelLines({
+    question: undefined,
+    helperText: undefined,
+    options: [],
+    selectedIndex: -1,
+    highlightSelection: false,
+    promptDraft: "make it darker",
+    isPromptOpen: true,
+    cursorIndex: 4,
+  });
+
+  assert.match(lines.at(-1) ?? "", /^> make█it darker$/);
+});
+
+test("prompt panel preserves text width when the cursor blink is off", () => {
+  const lines = buildPromptPanelLines({
+    question: undefined,
+    helperText: undefined,
+    options: [],
+    selectedIndex: -1,
+    highlightSelection: false,
+    promptDraft: "hello",
+    isPromptOpen: true,
+    cursorIndex: 2,
+    cursorVisible: false,
+  });
+
+  assert.match(lines.at(-1) ?? "", /^> hello$/);
 });

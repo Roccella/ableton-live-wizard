@@ -1,4 +1,4 @@
-import { WizardMcpServer } from "../mcp/server.js";
+import { WizardSessionController } from "../companion/types.js";
 import { generateBasicPattern } from "../music/basic-patterns.js";
 import { BasicPatternName, InstrumentRole, LiveState, MidiNote } from "../types.js";
 
@@ -296,7 +296,7 @@ const getSceneInsertIndex = (genreId: GuidedGenreId, state: LiveState, sceneName
 };
 
 const applyNotesForSceneTrack = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   guidedState: GuidedSessionState,
   trackRef: string,
   clipRef: string,
@@ -304,7 +304,7 @@ const applyNotesForSceneTrack = async (
   bars: number,
   transposeWithKey: boolean,
 ): Promise<string> => {
-  const state = await server.refreshState();
+  const state = await server.getState(false);
   const notes = generateBasicPattern(pattern, bars, state.transport);
   const keyedNotes = transposeWithKey ? transposeNotes(notes, computeSemitoneOffset(guidedState.key)) : notes;
   const result = await server.applyOperation("edit_notes", {
@@ -470,7 +470,7 @@ const getSceneSpecsForFoundations = (
   return dedupeClips([...clips, ...leadClips]);
 };
 
-export const clearSessionForGuidedStart = async (server: WizardMcpServer, hooks?: GuidedActionHooks): Promise<string[]> => {
+export const clearSessionForGuidedStart = async (server: WizardSessionController, hooks?: GuidedActionHooks): Promise<string[]> => {
   const messages: string[] = [];
   const targetSceneCount = 8;
 
@@ -495,7 +495,6 @@ export const clearSessionForGuidedStart = async (server: WizardMcpServer, hooks?
       state = await server.refreshState();
     }
 
-    state = await server.refreshState();
     for (let index = state.trackOrder.length - 1; index >= 1; index -= 1) {
       beforeMutation(hooks);
       const deleteTrackResult = await server.applyOperation("delete_track", { trackRef: state.trackOrder[index] });
@@ -582,7 +581,7 @@ export const clearSessionForGuidedStart = async (server: WizardMcpServer, hooks?
 };
 
 const ensureTrack = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   trackName: string,
   role: InstrumentRole,
   instrumentQuery: string | undefined,
@@ -633,7 +632,7 @@ const ensureTrack = async (
 };
 
 const ensureScene = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   sceneName: string,
   messages: string[],
@@ -678,7 +677,7 @@ const ensureScene = async (
 };
 
 const ensureSceneClip = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   guidedState: GuidedSessionState,
   sceneName: string,
@@ -718,7 +717,7 @@ const ensureSceneClip = async (
 };
 
 const fireSceneByName = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   sceneName: string,
   messages: string[],
   hooks?: GuidedActionHooks,
@@ -736,21 +735,21 @@ const fireSceneByName = async (
 };
 
 const getExistingGuidedSceneNames = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
 ): Promise<string[]> => {
-  const state = await server.refreshState();
+  const state = await server.getState(false);
   return GENRES[genreId].sceneOrder.filter((sceneName) => Boolean(findSceneByName(state, sceneName)));
 };
 
 const ensureGenreTempo = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   messages: string[],
   hooks?: GuidedActionHooks,
 ): Promise<void> => {
   const targetTempo = GENRES[genreId].tempo;
-  const state = await server.refreshState();
+  const state = await server.getState(false);
   if (Math.round(state.transport.bpm) === targetTempo) {
     return;
   }
@@ -767,7 +766,7 @@ const pickFoundationFireScene = (sceneNames: string[]): string => {
 };
 
 export const applyFoundationStep = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   guidedState: GuidedSessionState,
   stepId: GuidedFoundationId,
@@ -809,7 +808,7 @@ export const applyFoundationStep = async (
 };
 
 export const applyContinuationStep = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   guidedState: GuidedSessionState,
   stepId: GuidedContinuationId,
@@ -851,7 +850,7 @@ export const applyContinuationStep = async (
 };
 
 export const applyChainChoice = async (
-  server: WizardMcpServer,
+  server: WizardSessionController,
   genreId: GuidedGenreId,
   chainId: GuidedChainId,
   hooks?: GuidedActionHooks,

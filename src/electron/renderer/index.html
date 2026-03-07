@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ableton Live Wizard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="chat-shell">
+      <section class="chat-feed" id="chat-feed" aria-live="polite"></section>
+
+      <form class="composer" id="composer-form">
+        <label class="sr-only" for="prompt-input">Prompt</label>
+        <textarea
+          id="prompt-input"
+          rows="3"
+          placeholder="Write a prompt. Enter sends. Shift+Enter adds a line break."
+        ></textarea>
+      </form>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

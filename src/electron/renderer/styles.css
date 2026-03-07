@@ -1,0 +1,143 @@
+:root {
+  --bg: #0b0c0f;
+  --surface: #111317;
+  --surface-strong: #15181d;
+  --surface-user: #181b21;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #eceef2;
+  --text-muted: #9ca3af;
+  --accent: #d6dae1;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+body {
+  overflow: hidden;
+}
+
+.chat-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.chat-feed {
+  overflow: auto;
+  padding: 18px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  max-width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.message-user {
+  justify-items: end;
+}
+
+.message-bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.message-user .message-bubble {
+  background: var(--surface-user);
+}
+
+.message-system .message-bubble {
+  color: var(--text-muted);
+}
+
+.choice-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.choice-button {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: #101216;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+.choice-button:hover,
+.choice-button:focus-visible,
+.choice-button.is-selected {
+  border-color: var(--border-strong);
+  background: var(--surface-strong);
+}
+
+.choice-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.composer {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+#prompt-input {
+  width: 100%;
+  resize: none;
+  min-height: 72px;
+  max-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px 14px;
+  font: 500 15px/1.45 "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+  outline: none;
+}
+
+#prompt-input:focus {
+  border-color: var(--border-strong);
+}
+
+#prompt-input:disabled {
+  opacity: 0.6;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
