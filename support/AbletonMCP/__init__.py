@@ -93,19 +93,18 @@ class AbletonMCP(ControlSurface):
                     break
 
                 buffer += data.decode("utf-8")
-                try:
-                    command = json.loads(buffer)
-                    buffer = ""
-                except ValueError:
+                if "\n" not in buffer:
                     continue
+                line, buffer = buffer.split("\n", 1)
+                command = json.loads(line)
 
                 response = self._process_command(command)
-                client.sendall(json.dumps(response).encode("utf-8"))
+                client.sendall(json.dumps(response).encode("utf-8") + b"\n")
         except Exception as exc:
             self.log_message("Client handler error: {0}".format(str(exc)))
             self.log_message(traceback.format_exc())
             try:
-                client.sendall(json.dumps({"status": "error", "message": str(exc)}).encode("utf-8"))
+                client.sendall(json.dumps({"status": "error", "message": str(exc)}).encode("utf-8") + b"\n")
             except Exception:
                 pass
         finally:

@@ -520,16 +520,14 @@ export class TcpLiveBridge implements LiveBridge {
 
       socket.on("data", (chunk: Buffer) => {
         data += chunk.toString("utf8");
-        try {
-          JSON.parse(data);
-          finish(() => resolve(data));
-        } catch {
-          // Wait for the rest of the JSON payload.
+        const newlineIndex = data.indexOf("\n");
+        if (newlineIndex !== -1) {
+          finish(() => resolve(data.slice(0, newlineIndex)));
         }
       });
 
       socket.connect(this.config.port, this.config.host, () => {
-        socket.write(JSON.stringify(command));
+        socket.write(JSON.stringify(command) + "\n");
       });
     });
   }
