@@ -275,13 +275,14 @@ const GENRES: Record<GuidedGenreId, GenreSpec> = {
 };
 
 const findTrackByName = (state: LiveState, name: string) =>
-  state.trackOrder.map((trackId) => state.tracks[trackId]).find((track) => track.name === name);
+  state.trackOrder.map((trackId) => state.tracks[trackId]).find((track) => track?.name === name);
 
 const findSceneByName = (state: LiveState, name: string) =>
-  state.sceneOrder.map((sceneId) => state.scenes[sceneId]).find((scene) => scene.name === name);
+  state.sceneOrder.map((sceneId) => state.scenes[sceneId]).find((scene) => scene?.name === name);
 
 const isReusableTrack = (state: LiveState, trackId: string): boolean => {
   const track = state.tracks[trackId];
+  if (!track) return false;
   return track.kind === "midi" && track.devices.length === 0 && track.clipOrder.length === 0;
 };
 
