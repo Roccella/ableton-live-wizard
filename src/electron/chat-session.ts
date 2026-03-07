@@ -47,6 +47,8 @@ type GuidedHistoryEntry = {
 };
 
 const DEFAULT_INPUT_PLACEHOLDER = "Write a prompt. Enter sends. Shift+Enter adds a line break.";
+const MAX_MESSAGES = 200;
+const MAX_GUIDED_HISTORY = 20;
 
 export class ElectronChatSession {
   private readonly service: WizardCompanionService;
@@ -148,6 +150,16 @@ export class ElectronChatSession {
       role,
       text,
     });
+    if (this.messages.length > MAX_MESSAGES) {
+      this.messages.splice(0, this.messages.length - MAX_MESSAGES);
+    }
+  }
+
+  private pushHistory(entry: GuidedHistoryEntry): void {
+    this.guidedHistory.push(entry);
+    if (this.guidedHistory.length > MAX_GUIDED_HISTORY) {
+      this.guidedHistory.splice(0, this.guidedHistory.length - MAX_GUIDED_HISTORY);
+    }
   }
 
   private setPrompt(question: string, options: CompanionPromptOption[], mode: GuidedMode): void {
@@ -352,7 +364,7 @@ export class ElectronChatSession {
       const snapshot = this.captureGuidedSnapshot("prepare");
       this.guidedState = createGuidedSessionState();
       await clearSessionForGuidedStart(this.service);
-      this.guidedHistory.push({ snapshot, undoSteps: 1 });
+      this.pushHistory({ snapshot, undoSteps: 1 });
       this.openGenreOptions();
       return "Cleared the current set.";
     }
@@ -402,7 +414,7 @@ export class ElectronChatSession {
       if (!isGuidedFoundationId(stepId)) return "Unknown foundation step.";
       const snapshot = this.captureGuidedSnapshot("build");
       await applyFoundationStep(this.service, genreId, this.guidedState, stepId);
-      this.guidedHistory.push({ snapshot, undoSteps: 1 });
+      this.pushHistory({ snapshot, undoSteps: 1 });
       this.guidedState = markFoundationCompleted(this.guidedState, stepId);
       this.openBuildOptions();
       return `${option.label} done.`;
@@ -419,7 +431,7 @@ export class ElectronChatSession {
       if (!isGuidedContinuationId(stepId)) return "Unknown continuation step.";
       const snapshot = this.captureGuidedSnapshot("build");
       await applyContinuationStep(this.service, genreId, this.guidedState, stepId);
-      this.guidedHistory.push({ snapshot, undoSteps: 1 });
+      this.pushHistory({ snapshot, undoSteps: 1 });
       this.guidedState = markContinuationCompleted(this.guidedState, stepId);
       this.openBuildOptions();
       return `${option.label} done.`;
@@ -441,7 +453,7 @@ export class ElectronChatSession {
       if (!isGuidedChainId(chainId)) return "Unknown chain.";
       const snapshot = this.captureGuidedSnapshot("chain");
       await applyChainChoice(this.service, genreId, chainId);
-      this.guidedHistory.push({ snapshot, undoSteps: 1 });
+      this.pushHistory({ snapshot, undoSteps: 1 });
       this.guidedState = selectChain(this.guidedState, chainId);
       this.openFreeMode();
       return `${option.label} selected.`;
