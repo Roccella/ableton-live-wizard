@@ -9,6 +9,12 @@ import { summarizeLiveState } from "./shared.js";
 
 app.setName("Ableton Live Wizard");
 
+// Set debug log path before any module calls debugLog, so util.ts picks up
+// the correct cross-platform path instead of the macOS-only fallback.
+if (!process.env.WIZARD_DEBUG_LOG_PATH) {
+  process.env.WIZARD_DEBUG_LOG_PATH = path.join(app.getPath("userData"), "logs", "wizard-debug.log");
+}
+
 const mainLogPath = process.env.WIZARD_ELECTRON_MAIN_LOG_PATH
   ?? path.join(app.getPath("userData"), "logs", "electron-main.log");
 
