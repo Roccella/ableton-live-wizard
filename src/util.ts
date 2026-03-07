@@ -11,10 +11,8 @@ export interface DebugLogEntry {
   payload?: unknown;
 }
 
-export const randomId = (prefix: string): string => {
-  const value = Math.random().toString(36).slice(2, 8);
-  return `${prefix}_${value}`;
-};
+export const randomId = (prefix: string): string =>
+  `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
 export const deepClone = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
