@@ -7,15 +7,32 @@ export interface BrowserItemCandidate {
 
 export interface QuerySearchProfile {
   roots: string[];
+  exact: string[];
   include: string[];
   exclude: string[];
 }
+
+const QUERY_STOP_WORDS = new Set(["a", "an", "the"]);
+const ABLETON_PRESET_EXTENSIONS = new Set(["adv", "adg", "aup", "alc"]);
 
 const normalize = (value: string): string =>
   value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+
+const unique = (values: string[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+};
 
 export const scoreBrowserItem = (
   itemName: string,
@@ -72,14 +89,26 @@ const BASS_EXCLUDES = [...NON_DRUM_EXCLUDES, "lead", "pad"];
 
 export const buildQuerySearchProfile = (query: string): QuerySearchProfile => {
   const normalized = normalize(query);
-  const terms = normalized.split(/\s+/).filter(Boolean);
-  const include = normalized ? [normalized, ...terms] : terms;
+  const normalizedTerms = normalized.split(/\s+/).filter(Boolean);
+  const strippedExtensionTerms =
+    normalizedTerms.length > 1 && ABLETON_PRESET_EXTENSIONS.has(normalizedTerms.at(-1) ?? "")
+      ? normalizedTerms.slice(0, -1)
+      : normalizedTerms;
+  const exactCandidates = unique([
+    normalized,
+    strippedExtensionTerms.join(" "),
+  ]);
+  const terms = unique(
+    strippedExtensionTerms.filter((term) => term.length > 1 && !QUERY_STOP_WORDS.has(term)),
+  );
+  const include = unique([...exactCandidates, ...terms]);
   const isDrumQuery = terms.some((term) => DRUM_QUERY_TERMS.includes(term));
   const isBassQuery = terms.includes("bass") || terms.includes("sub");
 
   if (isDrumQuery) {
     return {
       roots: ["drums", "sounds", "instruments"],
+      exact: exactCandidates,
       include,
       exclude: [],
     };
@@ -87,6 +116,7 @@ export const buildQuerySearchProfile = (query: string): QuerySearchProfile => {
 
   return {
     roots: ["sounds", "instruments"],
+    exact: exactCandidates,
     include,
     exclude: isBassQuery ? BASS_EXCLUDES : NON_DRUM_EXCLUDES,
   };

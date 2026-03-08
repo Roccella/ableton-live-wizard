@@ -46,6 +46,35 @@ interface BrowserItemResponse {
   }>;
 }
 
+type BrowserSearchContext = {
+  exactMatches: string[];
+  visitedPaths: number;
+  maxPaths: number;
+};
+
+const normalizeSearchKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const PRESET_EXTENSION_TOKENS = new Set(["adv", "adg", "aup", "alc"]);
+
+const normalizeExactKey = (value: string): string => {
+  const tokens = normalizeSearchKey(value).split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && PRESET_EXTENSION_TOKENS.has(tokens.at(-1) ?? "")) {
+    return tokens.slice(0, -1).join(" ");
+  }
+  return tokens.join(" ");
+};
+
+const QUERY_PATH_HINTS: Record<string, string[]> = {
+  "909 core kit": ["drums"],
+  "synth pop bass": ["sounds/Bass"],
+  "filtered sync lead": ["sounds/Synth Lead"],
+  "a soft chord": ["instruments/Wavetable/Synth Keys", "sounds/Synth Keys"],
+};
+
 type AbletonCommand = {
   type: string;
   params?: Record<string, unknown>;
@@ -392,27 +421,116 @@ export class TcpLiveBridge implements LiveBridge {
 
     if (payload.role) {
       const profile = getInstrumentSearchProfile(payload.role);
+      let best: BrowserSelection | undefined;
+      const context: BrowserSearchContext = {
+        exactMatches: [],
+        visitedPaths: 0,
+        maxPaths: 12,
+      };
       for (const root of profile.roots) {
-        const result = await this.searchBrowserPath(root, root, profile.include, profile.exclude, profile.maxDepth);
-        if (result) {
-          return result;
+        const result = await this.searchBrowserPath(root, root, profile.include, profile.exclude, profile.maxDepth, context);
+        if (this.isBetterSelection(result, best)) {
+          best = result;
         }
+        if (this.isExactSelection(best, context.exactMatches)) {
+          debugLog("tcp-bridge", "browser-search:exact-role-hit", { role: payload.role, selection: best, visitedPaths: context.visitedPaths });
+          return best;
+        }
+      }
+      if (best) {
+        debugLog("tcp-bridge", "browser-search:role-hit", { role: payload.role, selection: best, visitedPaths: context.visitedPaths });
+        return best;
       }
       throw new Error(`No stock instrument found for role '${payload.role}'`);
     }
 
     if (payload.query) {
       const profile = buildQuerySearchProfile(payload.query);
+      const hintedPaths = this.getHintedQueryPaths(payload.query, profile.exact);
+      const hinted = await this.searchHintedQueryPaths(hintedPaths, profile.include, profile.exclude, profile.exact);
+      if (hinted) {
+        debugLog("tcp-bridge", "browser-search:hint-hit", { query: payload.query, selection: hinted });
+        return hinted;
+      }
+      let best: BrowserSelection | undefined;
+      const context: BrowserSearchContext = {
+        exactMatches: profile.exact,
+        visitedPaths: 0,
+        maxPaths: 20,
+      };
       for (const root of profile.roots) {
-        const result = await this.searchBrowserPath(root, root, profile.include, profile.exclude, 3);
-        if (result) {
-          return result;
+        if (hintedPaths.includes(root)) {
+          continue;
+        }
+        const result = await this.searchBrowserPath(root, root, profile.include, profile.exclude, 3, context);
+        if (this.isBetterSelection(result, best)) {
+          best = result;
+        }
+        if (this.isExactSelection(best, context.exactMatches)) {
+          debugLog("tcp-bridge", "browser-search:exact-query-hit", { query: payload.query, selection: best, visitedPaths: context.visitedPaths });
+          return best;
         }
       }
+      if (best) {
+        debugLog("tcp-bridge", "browser-search:query-hit", { query: payload.query, selection: best, visitedPaths: context.visitedPaths });
+        return best;
+      }
+      debugLog("tcp-bridge", "browser-search:miss", { query: payload.query, visitedPaths: context.visitedPaths });
       throw new Error(`No stock instrument found for query '${payload.query}'`);
     }
 
     throw new Error("select_instrument requires role, query, or pre-resolved selection");
+  }
+
+  private async searchHintedQueryPaths(
+    preferredPaths: string[],
+    include: string[],
+    exclude: string[],
+    exactMatches: string[],
+  ): Promise<BrowserSelection | undefined> {
+    for (const path of preferredPaths) {
+      const result = (await this.sendCommand("get_browser_items_at_path", {
+        path,
+      })) as BrowserItemResponse;
+
+      if (result.error) {
+        continue;
+      }
+
+      const directItems = result.items.map((item) => ({
+        name: item.name,
+        isFolder: item.is_folder,
+        isLoadable: item.is_loadable,
+        uri: item.uri,
+      }));
+      const directMatch = pickBestBrowserItem(directItems, { include, exclude });
+      if (!directMatch?.uri) {
+        continue;
+      }
+
+      const selection: BrowserSelection = {
+        uri: directMatch.uri,
+        name: directMatch.name,
+        path: `${path}/${directMatch.name}`,
+        score: scoreBrowserItem(directMatch.name, include, exclude),
+      };
+      if (this.isExactSelection(selection, exactMatches)) {
+        return selection;
+      }
+    }
+
+    return undefined;
+  }
+
+  private getHintedQueryPaths(query: string, exactMatches: string[]): string[] {
+    const hinted = new Set<string>();
+    const keys = [normalizeSearchKey(query), ...exactMatches.map((value) => normalizeSearchKey(value))];
+    for (const key of keys) {
+      for (const path of QUERY_PATH_HINTS[key] ?? []) {
+        hinted.add(path);
+      }
+    }
+    return [...hinted];
   }
 
   private async searchBrowserPath(
@@ -421,7 +539,14 @@ export class TcpLiveBridge implements LiveBridge {
     include: string[],
     exclude: string[],
     depthRemaining: number,
+    context: BrowserSearchContext,
   ): Promise<BrowserSelection | undefined> {
+    if (context.visitedPaths >= context.maxPaths) {
+      debugLog("tcp-bridge", "browser-search:budget-hit", { currentPath, maxPaths: context.maxPaths });
+      return undefined;
+    }
+    context.visitedPaths += 1;
+
     const result = (await this.sendCommand("get_browser_items_at_path", {
       path: currentPath,
     })) as BrowserItemResponse;
@@ -440,10 +565,10 @@ export class TcpLiveBridge implements LiveBridge {
       uri: item.uri,
     }));
 
+    let bestMatch: BrowserSelection | undefined;
     const directMatch = pickBestBrowserItem(directItems, { include, exclude });
-
     if (directMatch?.uri) {
-      return {
+      bestMatch = {
         uri: directMatch.uri,
         name: directMatch.name,
         path: `${currentPath}/${directMatch.name}`,
@@ -451,8 +576,20 @@ export class TcpLiveBridge implements LiveBridge {
       };
     }
 
+    if (this.isExactSelection(bestMatch, context.exactMatches)) {
+      return bestMatch;
+    }
+
+    if (bestMatch && currentPath === rootPath) {
+      return bestMatch;
+    }
+
+    if (bestMatch) {
+      return bestMatch;
+    }
+
     if (depthRemaining <= 0) {
-      return undefined;
+      return bestMatch;
     }
 
     const candidateFolders = result.items
@@ -465,13 +602,41 @@ export class TcpLiveBridge implements LiveBridge {
 
     for (const folder of candidateFolders) {
       const nextPath = `${currentPath}/${folder.name}`;
-      const nested = await this.searchBrowserPath(rootPath, nextPath, include, exclude, depthRemaining - 1);
-      if (nested) {
-        return nested;
+      const nested = await this.searchBrowserPath(rootPath, nextPath, include, exclude, depthRemaining - 1, context);
+      if (this.isBetterSelection(nested, bestMatch)) {
+        bestMatch = nested;
+      }
+      if (this.isExactSelection(bestMatch, context.exactMatches)) {
+        return bestMatch;
       }
     }
 
-    return undefined;
+    return bestMatch;
+  }
+
+  private isBetterSelection(
+    candidate: BrowserSelection | undefined,
+    currentBest: BrowserSelection | undefined,
+  ): candidate is BrowserSelection {
+    if (!candidate) {
+      return false;
+    }
+    if (!currentBest) {
+      return true;
+    }
+    return candidate.score > currentBest.score;
+  }
+
+  private isExactSelection(
+    candidate: BrowserSelection | undefined,
+    exactMatches: string[],
+  ): candidate is BrowserSelection {
+    if (!candidate || exactMatches.length === 0) {
+      return false;
+    }
+
+    const normalizedName = normalizeExactKey(candidate.name);
+    return exactMatches.some((value) => normalizedName === normalizeExactKey(value));
   }
 
   private async sendCommand(type: string, params: Record<string, unknown>): Promise<unknown> {
@@ -508,6 +673,16 @@ export class TcpLiveBridge implements LiveBridge {
         fn();
       };
 
+      const resolveFromBuffer = (streamEnded = false): boolean => {
+        const response = this.extractResponsePayload(data, streamEnded);
+        if (response === undefined) {
+          return false;
+        }
+
+        finish(() => resolve(response));
+        return true;
+      };
+
       socket.setTimeout(this.config.timeoutMs);
 
       socket.on("timeout", () => {
@@ -520,16 +695,50 @@ export class TcpLiveBridge implements LiveBridge {
 
       socket.on("data", (chunk: Buffer) => {
         data += chunk.toString("utf8");
-        const newlineIndex = data.indexOf("\n");
-        if (newlineIndex !== -1) {
-          finish(() => resolve(data.slice(0, newlineIndex)));
+        resolveFromBuffer(false);
+      });
+
+      socket.on("end", () => {
+        if (resolveFromBuffer(true)) {
+          return;
         }
+        finish(() => reject(new Error(`TCP bridge closed before responding: ${this.config.host}:${this.config.port}`)));
+      });
+
+      socket.on("close", (hadError) => {
+        if (hadError || settled || data.length === 0) {
+          return;
+        }
+        resolveFromBuffer(true);
       });
 
       socket.connect(this.config.port, this.config.host, () => {
         socket.write(JSON.stringify(command) + "\n");
       });
     });
+  }
+
+  private extractResponsePayload(buffer: string, streamEnded = false): string | undefined {
+    const newlineIndex = buffer.indexOf("\n");
+    if (newlineIndex !== -1) {
+      return buffer.slice(0, newlineIndex);
+    }
+
+    const trimmed = buffer.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    try {
+      JSON.parse(trimmed);
+      return trimmed;
+    } catch {
+      if (!streamEnded) {
+        return undefined;
+      }
+    }
+
+    return undefined;
   }
 
   private toLiveNotes(notes: EditNotesPayload["notes"]): Array<Record<string, number | boolean>> {

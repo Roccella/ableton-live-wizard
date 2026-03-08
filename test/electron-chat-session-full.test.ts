@@ -4,64 +4,73 @@ import { ElectronChatSession } from "../src/electron/chat-session.js";
 import { LocalWizardCompanionService } from "../src/companion/local-service.js";
 import { WizardMcpServer } from "../src/mcp/server.js";
 import type { WizardCompanionService } from "../src/companion/types.js";
+import {
+  applyFoundationStep,
+  chooseScope,
+  chooseTonalContext,
+  createGuidedSessionState,
+} from "../src/workflows/guided-starter.js";
 
 const makeSession = () =>
   new ElectronChatSession(new LocalWizardCompanionService(new WizardMcpServer()));
 
-// Advances past prepare and genre selection into scale_mode
-const advanceToScaleMode = async (session: ElectronChatSession) => {
+// Advances past prepare into scope selection
+const advanceToScope = async (session: ElectronChatSession) => {
   await session.bootstrap("conn");
-  await session.chooseOption("prepare_keep", "conn");
-  return session.chooseOption("genre_house", "conn");
+  return session.chooseOption("prepare_keep", "conn");
 };
 
-// Advances into key selection
-const advanceToKey = async (session: ElectronChatSession) => {
-  await advanceToScaleMode(session);
-  return session.chooseOption("scale_minor", "conn");
+// Advances into genre selection
+const advanceToGenre = async (session: ElectronChatSession) => {
+  await advanceToScope(session);
+  return session.chooseOption("scope_song", "conn");
 };
 
 // Advances into build options
 const advanceToBuild = async (session: ElectronChatSession) => {
-  await advanceToKey(session);
-  return session.chooseOption("key_A", "conn");
+  await advanceToGenre(session);
+  await session.chooseOption("genre_house", "conn");
+  return session.chooseOption("tonal_minor_A", "conn");
 };
 
 // --- back navigation ---
 
-test("back from genre returns to prepare options", async () => {
+test("back from scope returns to prepare options", async () => {
   const session = makeSession();
   await session.bootstrap("conn");
   await session.chooseOption("prepare_keep", "conn");
-  // now in genre mode
+  // now in scope mode
   const snapshot = await session.chooseOption("back", "conn");
   assert.ok(snapshot.promptState.options.some((o) => o.id === "prepare_clear"));
   assert.ok(snapshot.promptState.options.some((o) => o.id === "prepare_keep"));
 });
 
-test("back from scale_mode returns to genre options", async () => {
+test("back from genre returns to scope options", async () => {
   const session = makeSession();
-  await advanceToScaleMode(session);
-  // now in scale_mode
+  await advanceToGenre(session);
+  // now in genre mode
+  const snapshot = await session.chooseOption("back", "conn");
+  assert.ok(snapshot.promptState.options.some((o) => o.id === "scope_single_scene"));
+  assert.ok(snapshot.promptState.options.some((o) => o.id === "scope_one_part"));
+  assert.ok(snapshot.promptState.options.some((o) => o.id === "scope_song"));
+});
+
+test("back from tonal context returns to genre options", async () => {
+  const session = makeSession();
+  await advanceToGenre(session);
+  await session.chooseOption("genre_house", "conn");
+  // now in tonal context mode
   const snapshot = await session.chooseOption("back", "conn");
   assert.ok(snapshot.promptState.options.some((o) => o.id === "genre_house"));
   assert.ok(snapshot.promptState.options.some((o) => o.id === "genre_drum_n_bass"));
 });
 
-test("back from key returns to scale_mode options", async () => {
-  const session = makeSession();
-  await advanceToKey(session);
-  // now in key mode
-  const snapshot = await session.chooseOption("back", "conn");
-  assert.ok(snapshot.promptState.options.some((o) => o.id.startsWith("scale_")));
-});
-
-test("back from build returns to key options", async () => {
+test("back from build returns to tonal context options", async () => {
   const session = makeSession();
   await advanceToBuild(session);
   // now in build mode
   const snapshot = await session.chooseOption("back", "conn");
-  assert.ok(snapshot.promptState.options.some((o) => o.id.startsWith("key_")));
+  assert.ok(snapshot.promptState.options.some((o) => o.id.startsWith("tonal_")));
 });
 
 // --- disabled option ---
@@ -158,11 +167,12 @@ test("suggest freeform command resets guided state and reopens prepare options",
 // --- service error handling ---
 
 test("service error during freeform prompt adds system message", async () => {
+  const fallbackState = await new WizardMcpServer().getState();
   const failingService = {
     submitPrompt: async () => { throw new Error("service unavailable"); },
     undoLast: async () => ({ message: "ok" }),
-    getState: async () => { throw new Error("not implemented"); },
-    refreshState: async () => {},
+    getState: async () => fallbackState,
+    refreshState: async () => fallbackState,
     getResourceCatalog: async () => [],
     describeConnection: () => "failing",
     subscribe: () => () => {},
@@ -180,11 +190,12 @@ test("service error during freeform prompt adds system message", async () => {
 });
 
 test("service error during guided option adds system message without crashing", async () => {
+  const fallbackState = await new WizardMcpServer().getState();
   const failingService = {
     submitPrompt: async () => ({ message: "ok" }),
     undoLast: async () => ({ message: "ok" }),
-    getState: async () => { throw new Error("not implemented"); },
-    refreshState: async () => {},
+    getState: async () => fallbackState,
+    refreshState: async () => fallbackState,
     getResourceCatalog: async () => [],
     describeConnection: () => "failing",
     subscribe: () => () => {},
@@ -204,10 +215,10 @@ test("service error during guided option adds system message without crashing", 
   await session.bootstrap("conn");
   // prepare_keep doesn't call any service methods, so it succeeds
   await session.chooseOption("prepare_keep", "conn");
+  await session.chooseOption("scope_song", "conn");
   // genre_house doesn't call service either
   await session.chooseOption("genre_house", "conn");
-  await session.chooseOption("scale_minor", "conn");
-  await session.chooseOption("key_A", "conn");
+  await session.chooseOption("tonal_minor_A", "conn");
 
   // foundation_drums calls applyFoundationStep which calls applyOperation - this will throw
   const snapshot = await session.chooseOption("foundation_drums", "conn");
@@ -236,9 +247,30 @@ test("messages are pruned to 200 maximum after many pushes", async () => {
 test("go back freeform triggers back option when available", async () => {
   const session = makeSession();
   await session.bootstrap("conn");
-  await session.chooseOption("prepare_keep", "conn"); // now in genre mode, back is available
+  await session.chooseOption("prepare_keep", "conn"); // now in scope mode, back is available
 
   const snapshot = await session.submitFreeform("go back", "conn");
   // Should have gone back to prepare
   assert.ok(snapshot.promptState.options.some((o) => o.id === "prepare_clear"));
+});
+
+test("build options reflect the current Live set before guided state catches up", async () => {
+  const server = new WizardMcpServer();
+  let guidedState = createGuidedSessionState();
+  guidedState = chooseScope(guidedState, "song");
+  guidedState.genre = "house";
+  guidedState = chooseTonalContext(guidedState, "A", "minor");
+  await applyFoundationStep(server, "house", guidedState, "drums");
+
+  const session = new ElectronChatSession(new LocalWizardCompanionService(server));
+  await session.bootstrap("conn");
+  await session.chooseOption("prepare_keep", "conn");
+  await session.chooseOption("scope_song", "conn");
+  await session.chooseOption("genre_house", "conn");
+  const snapshot = await session.chooseOption("tonal_minor_A", "conn");
+
+  const optionIds = snapshot.promptState.options.map((option) => option.id);
+  assert.ok(!optionIds.includes("foundation_drums"));
+  assert.ok(optionIds.includes("foundation_bassline"));
+  assert.ok(optionIds.includes("continuation_verse_variation"));
 });

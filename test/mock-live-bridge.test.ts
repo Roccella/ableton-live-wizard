@@ -48,6 +48,18 @@ test("inserting a track at a specific index reindexes all tracks", async () => {
   assert.equal(state.tracks["track_2"].index, 1);
 });
 
+test("default track insertion follows the currently selected track", async () => {
+  const bridge = makeBridge();
+  await bridge.applyOperation(op("create_track", { name: "Front", index: 0 }));
+  await bridge.applyOperation(op("create_track", { name: "Neighbor" }));
+
+  const state = await bridge.getState();
+  assert.equal(state.trackOrder.length, 3);
+  assert.equal(state.tracks["track_1"].name, "Front");
+  assert.equal(state.tracks["track_2"].name, "Neighbor");
+  assert.equal(state.tracks["track_3"].name, "MIDI 1");
+});
+
 // --- scene reindexing ---
 
 test("deleting a scene renumbers remaining scenes by position", async () => {
@@ -111,6 +123,25 @@ test("applying a new operation after undo clears redo", async () => {
   // redo should now be gone
   const result = await bridge.redoLast();
   assert.equal(result.operationId, "none");
+});
+
+test("multiple undo calls walk back the mock bridge history", async () => {
+  const bridge = makeBridge();
+  await bridge.applyOperation(op("create_track", { name: "A" }));
+  await bridge.applyOperation(op("create_track", { name: "B" }));
+
+  let state = await bridge.getState();
+  assert.equal(state.trackOrder.length, 3);
+
+  await bridge.undoLast();
+  state = await bridge.getState();
+  assert.equal(state.trackOrder.length, 2);
+  assert.ok(!state.trackOrder.some((trackId) => state.tracks[trackId].name === "B"));
+
+  await bridge.undoLast();
+  state = await bridge.getState();
+  assert.equal(state.trackOrder.length, 1);
+  assert.ok(!state.trackOrder.some((trackId) => state.tracks[trackId].name === "A"));
 });
 
 // --- fire_clip mutual exclusion ---

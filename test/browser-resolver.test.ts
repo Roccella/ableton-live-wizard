@@ -58,6 +58,20 @@ test("explicit house chords query prefers the exact chord preset", () => {
   assert.equal(best?.uri, "chords");
 });
 
+test("preset queries prefer the exact preset name over partial soft matches", () => {
+  const profile = buildQuerySearchProfile("A Soft Chord.adv");
+  const best = pickBestBrowserItem(
+    [
+      { name: "Soft Industry", isFolder: false, isLoadable: true, uri: "soft-industry" },
+      { name: "A Soft Chord", isFolder: false, isLoadable: true, uri: "a-soft-chord" },
+    ],
+    { include: profile.include, exclude: profile.exclude },
+  );
+
+  assert.equal(best?.uri, "a-soft-chord");
+  assert.ok(scoreBrowserItem("A Soft Chord", profile.include, profile.exclude) > scoreBrowserItem("Soft Industry", profile.include, profile.exclude));
+});
+
 test("basic patterns generate note content", () => {
   const notes = generateBasicPattern("bass-test", 2, {
     isPlaying: true,

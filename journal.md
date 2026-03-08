@@ -157,6 +157,109 @@ Outcome:
 - The pending `review-tests` checklist is now complete.
 - The repo now passes `npm run build`, `npm run lint`, and `npm test` with 113 passing tests.
 
+### 2026-03-07 - Make the TCP bridge tolerant to Remote Script framing drift
+Context:
+- The Electron companion started failing on bootstrap with `TCP timeout to 127.0.0.1:9877` even though direct requests to the Ableton TCP port still returned valid state.
+- The repo copy of `support/AbletonMCP/__init__.py` had already moved to newline-delimited framing, but the installed Ableton Control Surface on this Mac was still replying with raw JSON and no trailing newline.
+Decision:
+- Make the Node TCP bridge accept both response styles instead of requiring an immediate Remote Script reinstall.
+- Add a regression test for both newline-delimited and legacy raw-JSON response extraction.
+Outcome:
+- `npm start` can talk again to the currently installed Remote Script on this machine.
+- Remote Script reinstalls are still recommended when the installed copy drifts, but connectivity is no longer blocked by this framing mismatch alone.
+
+### 2026-03-08 - Move guided build suggestions toward a declarative graph
+Context:
+- The first Live-aware suggestion pass worked, but the build menu was still assembled from hardcoded logic inside `guided-starter.ts`.
+- The next goal was to make the guided tree easier to extend while keeping the current Electron UI unchanged.
+Decision:
+- Introduce a declarative per-genre build graph for foundations, continuations, and chaining visibility.
+- Keep later paths visible in the build menu even when they are not yet available, and derive enabled/disabled state from Live-aware progress.
+- Count real mutation steps for guided actions so guided undo matches multi-step operations in the mock/runtime paths.
+Outcome:
+- The guided build menu is now easier to evolve without reworking the session UI logic every time the tree changes.
+- Users can now see the next paths earlier in the conversation, while the app still gates them based on the current set state.
+
+### 2026-03-08 - Reassess guided startup around intent, awareness, and scene coverage
+Context:
+- Trial use of the companion showed that `genre -> scale -> key` is not always the right first interaction.
+- A bassline-only test exposed a deeper modeling flaw: the current system marks a foundation as complete from track presence, while actual scene coverage can still be missing.
+- Additional research across Ableton Live/Push, Captain Plugins, Scaler 3, and Maschine showed a more consistent pattern: shared tonal context, role-aware generators, and a separation between idea building and song arrangement.
+Decision:
+- Keep the current guided flow for now, but treat its redesign as the next product spike.
+- Evaluate an intent-first startup where the user first chooses whether they want `one part`, a `loop`, a `multi-scene sketch`, or a `song expansion`.
+- Treat key and scale as one tonal-context decision in the UX, even if they stay separate in internal state.
+- Split future awareness into a low-latency app-session model plus explicit reconciliation with the real Live set via `Pull from Live`.
+- Treat single-role coverage as first-class so a bassline-only sketch can still populate multiple scenes coherently.
+Outcome:
+- The next iteration is no longer "add more tree branches"; it is "fix the model of scope, coverage, and awareness first".
+- Research findings and references are captured in `research/guided-decision-tree-redesign.md`.
+
+### 2026-03-08 - Ship scope-first startup and single-role scene coverage in the companion
+Context:
+- The research direction was clear enough to ship a first product slice without waiting for a full awareness rewrite.
+- The immediate need was to improve suggestions and fix the bassline-only case without destabilizing the existing `song sketch` flow.
+Decision:
+- Insert `scope` into the Electron companion startup and replace separate `scale` and `key` prompts with one combined tonal-context step.
+- Keep `Song sketch` on the existing full-track graph, but limit `One part` and `Loop starter` to foundation-first suggestions.
+- In non-song scopes, make foundation application fill the expected scene set and make completion depend on scene coverage instead of track presence alone.
+Outcome:
+- The companion now supports `One part`, `Loop starter`, and `Song sketch` as separate guided entry paths.
+- A `One part -> Bassline` run now creates a coherent bassline-only multi-scene sketch instead of leaving later scenes empty while the role appears complete.
+- Regression coverage now includes the new startup flow, one-part build options, and the single-role scene-fill behavior.
+
+### 2026-03-08 - Add natural-language shortcuts for the guided companion flow
+Context:
+- The companion had reached a point where the visible guided options were stable enough to expose through chat text, but the product still needed to preserve deterministic behavior.
+- The immediate target was not open-ended composition chat; it was the ability to ask for guided steps, restarts, and starter choices in natural language without rebuilding the orchestration layer.
+Decision:
+- Keep the existing exact prompt parser as the first resolution layer so current commands remain stable.
+- Add a second, English-only guided-intent matcher that recognizes reset phrases, guided startup choices, tonal context requests, foundation steps, continuation steps, and chain actions.
+- Route matched natural-language requests back through the same guided option handlers used by the suggestion buttons instead of creating a separate execution path.
+- Update the fixed House starter so the `Chords` role uses the stock preset query `A Soft Chord`.
+Outcome:
+- The companion can now resolve inputs like starting over, choosing a scope/genre/tonal context, and asking for guided build steps from freeform chat text.
+- Existing exact commands still win, ambiguous guided requests do not silently mutate the set, and unsupported freeform composition requests still fall back to explicit suggestions.
+- The guided House starter now consistently targets `A Soft Chord` for its chord layer.
+
+### 2026-03-08 - Align default track creation with the selected Live track
+Context:
+- Manual track creation in Live behaves relative to the currently selected track, while the companion path had been creating tracks with `create_midi_track(-1)`, which always appends at the end.
+- That mismatch likely explains why companion-created tracks could pick up a different visible width/layout context than tracks created directly in Live.
+Decision:
+- Change the Remote Script default insertion path so `create_midi_track` without an explicit index inserts after the currently selected normal track when possible.
+- After creation, select the new track so repeated companion track creation keeps moving forward in a predictable order.
+- Mirror the same behavior in the mock bridge so tests and local behavior stay aligned.
+- Update the fixed House chord preset query from `A Soft Chord` to `A Soft Chord.adv`.
+Outcome:
+- The companion no longer always appends new tracks at the far right when the command does not specify an index.
+- Default track creation should now feel closer to Live's manual `create track` flow and is more likely to preserve the local visual context the user was working from.
+- The guided House starter now targets `A Soft Chord.adv` explicitly.
+
+### 2026-03-08 - Add a single-scene guided scope for faster iteration
+Context:
+- The current guided flow always expanded into at least a two-scene loop or a wider multi-scene sketch, which made quick smoke tests slower than they needed to be.
+- The user wants a way to audition one guided part in one scene without paying the cost of extra scene creation.
+Decision:
+- Add a new guided scope, `Single scene`, ahead of `One part`, `Loop starter`, and `Song sketch`.
+- Keep it foundation-first, like the other non-song scopes, so it never surfaces continuation or chain steps.
+- Make the natural-language matcher understand phrases like `single scene` and `one scene` so the chat path and button path stay aligned.
+Outcome:
+- The companion can now build a one-scene guided sketch for quick validation without creating the rest of the scene ladder.
+- Single-scene flows still use the same deterministic foundation builders and Live-aware suggestion logic as the broader guided scopes.
+
+### 2026-03-08 - Stabilize the first Electron companion pass and trim remaining chrome
+Context:
+- Repeated guided build tests had exposed two different sources of instability: overly aggressive browser traversal from the TCP bridge and Remote Script reads running outside Live's main thread.
+- Once the crash path was under control, the remaining UI friction was mostly noise: setup confirmation messages in chat and an always-visible status header that consumed sidebar space.
+Decision:
+- Harden the bridge/runtime pair with exact preset path hints, browser-search budgets, early exact-match exits, and main-thread execution for Remote Script reads.
+- Keep the guided companion quieter by removing setup-step `selected` confirmations while preserving real action/result messages for builds and chains.
+- Remove the in-app header and move connection state to the native window title instead.
+Outcome:
+- The user reported that the Electron companion no longer reproduced the recent crash path in current guided tests.
+- The chat surface is now denser and less noisy, and the companion reached a first stable checkpoint for continuing product work in a later session.
+
 ## Milestones
 
 ### M0 - Research + Setup Complete

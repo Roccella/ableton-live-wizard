@@ -139,10 +139,11 @@ class AbletonMCP(ControlSurface):
         }
 
         try:
-            if command_type in mutating_commands:
-                result = self._run_on_main_thread(lambda: self._execute_mutating(command_type, params))
-            else:
-                result = self._execute_read(command_type, params)
+            result = self._run_on_main_thread(
+                lambda: self._execute_mutating(command_type, params)
+                if command_type in mutating_commands
+                else self._execute_read(command_type, params)
+            )
             self.log_message("Command success ({0})".format(command_type))
             return {"status": "success", "result": result}
         except Exception as exc:
@@ -318,9 +319,11 @@ class AbletonMCP(ControlSurface):
         }
 
     def _create_midi_track(self, index):
-        self._song.create_midi_track(index)
-        new_track_index = len(self._song.tracks) - 1 if index == -1 else index
+        insert_index = index if index != -1 else self._get_default_track_insert_index()
+        self._song.create_midi_track(insert_index)
+        new_track_index = len(self._song.tracks) - 1 if insert_index == -1 else insert_index
         new_track = self._song.tracks[new_track_index]
+        self._song.view.selected_track = new_track
         return {"index": new_track_index, "name": new_track.name}
 
     def _delete_track(self, track_index):
@@ -577,6 +580,17 @@ class AbletonMCP(ControlSurface):
         if track_index < 0 or track_index >= len(self._song.tracks):
             raise IndexError("Track index out of range")
         return self._song.tracks[track_index]
+
+    def _get_default_track_insert_index(self):
+        selected_track = getattr(self._song.view, "selected_track", None)
+        if selected_track is None:
+            return -1
+
+        for index, track in enumerate(self._song.tracks):
+            if track == selected_track:
+                return min(index + 1, len(self._song.tracks))
+
+        return -1
 
     def _require_scene(self, scene_index):
         if scene_index < 0 or scene_index >= len(self._song.scenes):

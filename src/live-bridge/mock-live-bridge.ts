@@ -66,11 +66,13 @@ const createDefaultState = (): LiveState => ({
 
 export class MockLiveBridge implements LiveBridge {
   private state: LiveState;
-  private lastUndo?: UndoToken;
-  private lastRedo?: UndoToken;
+  private readonly undoStack: UndoToken[] = [];
+  private readonly redoStack: UndoToken[] = [];
+  private selectedTrackId: string;
 
   constructor(initialState?: LiveState) {
     this.state = initialState ?? createDefaultState();
+    this.selectedTrackId = this.state.trackOrder[0] ?? "";
   }
 
   async getState(): Promise<LiveState> {
@@ -239,8 +241,8 @@ export class MockLiveBridge implements LiveBridge {
       operationId: plan.id,
       snapshot,
     };
-    this.lastUndo = undoToken;
-    this.lastRedo = undefined;
+    this.undoStack.push(undoToken);
+    this.redoStack.length = 0;
 
     return {
       operationId: plan.id,
@@ -251,7 +253,8 @@ export class MockLiveBridge implements LiveBridge {
   }
 
   async undoLast(): Promise<OperationResult> {
-    if (!this.lastUndo) {
+    const undoToken = this.undoStack.pop();
+    if (!undoToken) {
       return {
         operationId: "none",
         message: "No operation to undo",
@@ -259,14 +262,14 @@ export class MockLiveBridge implements LiveBridge {
     }
 
     const currentSnapshot = await this.getState();
-    this.state = deepClone(this.lastUndo.snapshot);
+    this.state = deepClone(undoToken.snapshot);
+    this.selectedTrackId = this.state.trackOrder[0] ?? "";
     this.touchState();
-    const op = this.lastUndo.operationId;
-    this.lastRedo = {
+    const op = undoToken.operationId;
+    this.redoStack.push({
       operationId: op,
       snapshot: currentSnapshot,
-    };
-    this.lastUndo = undefined;
+    });
     return {
       operationId: op,
       message: `Undo completed for ${op}`,
@@ -275,7 +278,8 @@ export class MockLiveBridge implements LiveBridge {
   }
 
   async redoLast(): Promise<OperationResult> {
-    if (!this.lastRedo) {
+    const redoToken = this.redoStack.pop();
+    if (!redoToken) {
       return {
         operationId: "none",
         message: "No operation to redo",
@@ -283,14 +287,14 @@ export class MockLiveBridge implements LiveBridge {
     }
 
     const snapshot = await this.getState();
-    this.state = deepClone(this.lastRedo.snapshot);
+    this.state = deepClone(redoToken.snapshot);
+    this.selectedTrackId = this.state.trackOrder[0] ?? "";
     this.touchState();
-    const op = this.lastRedo.operationId;
-    this.lastUndo = {
+    const op = redoToken.operationId;
+    this.undoStack.push({
       operationId: op,
       snapshot,
-    };
-    this.lastRedo = undefined;
+    });
     return {
       operationId: op,
       message: `Redo completed for ${op}`,
@@ -302,7 +306,7 @@ export class MockLiveBridge implements LiveBridge {
     const insertAt =
       typeof index === "number" && Number.isFinite(index)
         ? Math.max(0, Math.min(index, this.state.trackOrder.length))
-        : this.state.trackOrder.length;
+        : this.getDefaultTrackInsertIndex();
     const trackId = `track_${this.state.trackOrder.length + 1}`;
     const track: Track = {
       id: trackId,
@@ -317,6 +321,7 @@ export class MockLiveBridge implements LiveBridge {
     this.state.tracks[trackId] = track;
     this.state.trackOrder.splice(insertAt, 0, trackId);
     this.reindexTracks();
+    this.selectedTrackId = this.state.trackOrder[insertAt] ?? this.state.trackOrder.at(-1) ?? "";
   }
 
   private createScene(name: string, index?: number): void {
@@ -336,9 +341,22 @@ export class MockLiveBridge implements LiveBridge {
 
   private deleteTrack(trackId: string): void {
     const track = this.requireTrack(trackId);
+    const deletedIndex = track.index;
     delete this.state.tracks[track.id];
     this.state.trackOrder = this.state.trackOrder.filter((id) => id !== trackId);
     this.reindexTracks();
+    if (this.selectedTrackId === trackId) {
+      const fallbackTrackId = this.state.trackOrder[deletedIndex] ?? this.state.trackOrder[deletedIndex - 1] ?? "";
+      this.selectedTrackId = fallbackTrackId;
+    }
+  }
+
+  private getDefaultTrackInsertIndex(): number {
+    const selectedIndex = this.state.trackOrder.indexOf(this.selectedTrackId);
+    if (selectedIndex >= 0) {
+      return Math.min(selectedIndex + 1, this.state.trackOrder.length);
+    }
+    return this.state.trackOrder.length;
   }
 
   private deleteScene(sceneId: string): void {

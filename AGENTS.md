@@ -14,10 +14,12 @@ Build an agentic copilot for Ableton Live that lets the user control production 
 - MVP1 now uses a local Electron companion app as the main operator surface, with the older TUI kept as a fallback and debugging surface.
 - The current product surface operates on the open Live Set, focused on normal MIDI tracks and Session View clips.
 - Live integration currently uses a bundled TCP Remote Script (`support/AbletonMCP/__init__.py`) installed as an Ableton Control Surface.
+- The TCP bridge is now backward-compatible with both the current newline-framed Remote Script replies and older installed script copies that still answer with raw JSON without a trailing newline.
 - The default operator path is now `npm start`: it targets Live TCP mode and opens the Electron companion window with local in-process prompt execution.
 - The repo can also produce a local unsigned macOS `.app` bundle with `npm run package:mac`.
 - The TUI fallback path still exists for debugging and regression checks (`npm run start:tui`).
 - The Electron UI is now intentionally minimal: one chat feed, one integrated input composer, and guided options rendered inside the chat instead of a separate dashboard or debug pane.
+- The Electron companion no longer renders an in-app status header; connection status now lives in the native window title as `Connected` / `Disconnected`.
 - Debug/status output for the Electron surface now goes to the launch terminal instead of an in-app debug panel.
 - The daemon-backed client path still exists for future multi-client work and explicit debugging.
 - The daemon exposes:
@@ -28,11 +30,18 @@ Build an agentic copilot for Ableton Live that lets the user control production 
   - debug and operation events over a local event stream
 - Validated flows in Live: create/rename/delete tracks, create/delete scenes, create/delete clips, assign stock instruments by role, write basic test patterns, set tempo, start/stop transport, fire clips, fire scenes, undo/redo.
 - Current checkpoint: the Electron companion can already control the same MVP1 flows as the TUI, and the architecture still preserves a future daemon-backed path for multiple clients.
+- Current checkpoint: the Electron companion reached a first stable local testing version for the current MVP1 guided flows, after TCP bridge browser-search hardening, Remote Script main-thread safety fixes, and UI simplification passes.
 - This should still be treated as a UX/control milestone, not as a musically strong generation milestone yet.
 - The pending `review-tests` backlog is now closed: automated coverage now includes prompt executor branches, Electron chat session flows, mock bridge edge cases, daemon HTTP routes, TCP bridge data transforms, utility helpers, full basic-pattern coverage, and the real bridge backend contract.
 - The companion runtime still uses the guided decision tree with fixed `House` and `Drum n bass` starters, foundation-step choices, continuation-step choices, and fixed chain suggestions.
-- The guided startup flow now begins with `clear current set` vs `keep what is already in Live`, then asks for `genre -> scale -> key` before offering fixed building steps.
+- The Electron companion guided startup flow now begins with `clear current set` vs `keep what is already in Live`, then asks for `scope -> genre -> tonal context` before offering fixed building steps.
+- The Electron companion now accepts English-only natural-language shortcuts for the guided flow, mapping resets and guided-tree requests onto the same handlers that power the visible suggestion buttons. Exact prompt commands still take precedence.
+- Guided scopes now distinguish `Single scene`, `One part`, `Loop starter`, and `Song sketch`, so quick one-scene tests and single-role sketches do not expose full-song continuations too early.
 - The guided tree is now non-linear inside each genre: element choices and arrangement choices coexist, and later element choices fill the scenes that already exist.
+- Guided build suggestions are now derived from Live-aware progress plus a declarative per-genre build graph, so later paths can stay visible but disabled until the set is ready.
+- Single-role guided awareness now uses scene coverage in non-song scopes, so a bassline-only sketch can populate multiple scenes coherently instead of being marked complete from track presence alone.
+- Default track creation now tries to insert after the currently selected Live track when no explicit index is provided, to better mirror manual track creation behavior.
+- The fixed guided House starter now uses `A Soft Chord.adv` for the `Chords` track preset.
 - A first resource catalog now exists in code for reusable patterns, scene skeletons, and compound bundles for `House` and `Drum n bass`.
 
 The product is intentionally split in three MVPs:
@@ -123,6 +132,9 @@ The product is intentionally split in three MVPs:
 - Exact place of groovebox-style song mode in the roadmap and how much of it belongs in the TUI vs Live itself.
 - Exact shape of the future M4L launcher/status device.
 - How far resource import/write flows should go before explicit confirmation.
+- Awareness model split: how much suggestion logic should come from low-latency app-session state versus explicit `Pull from Live` reconciliation with the real Ableton set.
+- How far the new scope model should go beyond `One part`, `Loop starter`, and `Song sketch`, and whether the TUI fallback should mirror the companion flow exactly.
+- Scope and coverage semantics for guided steps: how single-role sketches, multi-scene sketches, and full-track growth should differ in scene population and completion rules.
 
 ## Tech Stack (Planned)
 - Language: TypeScript (Node.js 22+).
@@ -196,6 +208,7 @@ The product is intentionally split in three MVPs:
 - The first resource catalog is intentionally narrow and code-defined; user-library writes remain outside current scope.
 - The packaged macOS app is local and unsigned; signing and notarization are not part of the current phase.
 - The Electron companion now treats guided suggestions as chat content rather than a separate control pane.
+- Freeform natural-language input is currently limited to guided-tree actions and reset/restart phrases. Open-ended composition chat still needs a broader planner/parser layer.
 
 ## Runtime
 - Runtime target: `codex`.

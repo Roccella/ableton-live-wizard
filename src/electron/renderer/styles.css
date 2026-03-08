@@ -96,54 +96,7 @@ body {
 .app-shell {
   height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
-/* === Header === */
-
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface);
-  user-select: none;
-}
-
-.header-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  flex-shrink: 0;
-}
-
-.status-dot.is-disconnected {
-  background: var(--danger);
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.header-meta .meta-value {
-  font-family: var(--font-mono);
-  color: var(--text);
-  font-size: var(--text-sm);
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 /* === Chat Feed === */

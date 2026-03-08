@@ -1,8 +1,10 @@
 import { WizardSessionController } from "../companion/types.js";
 import { generateBasicPattern } from "../music/basic-patterns.js";
 import { BasicPatternName, InstrumentRole, LiveState, MidiNote } from "../types.js";
+import { GUIDED_BUILD_GRAPH } from "./guided-build-graph.js";
 
 export type GuidedGenreId = "house" | "drum_n_bass";
+export type GuidedScopeId = "single_scene" | "one_part" | "loop" | "song";
 export type GuidedScaleMode = "minor" | "major";
 export type GuidedFoundationId = "drums" | "bassline" | "chords" | "pads";
 export type GuidedContinuationId = "verse_variation" | "build_drop" | "intro_outro";
@@ -20,6 +22,7 @@ export const isGuidedChainId = (value: string): value is GuidedChainId =>
   (GUIDED_CHAIN_IDS as readonly string[]).includes(value);
 
 export type GuidedSessionState = {
+  scope?: GuidedScopeId;
   genre?: GuidedGenreId;
   scaleMode?: GuidedScaleMode;
   key?: string;
@@ -48,6 +51,13 @@ export class GuidedActionPausedError extends Error {
 type KeyChoice = {
   id: string;
   label: string;
+};
+
+type TonalContextChoice = {
+  id: string;
+  label: string;
+  key: string;
+  scaleMode: GuidedScaleMode;
 };
 
 type SceneTrackSpec = {
@@ -87,7 +97,27 @@ type GenreSpec = {
   chainOptions: ChainOption[];
 };
 
+export type GuidedProgressStatus = "missing" | "partial" | "complete";
+
+export type GuidedBuildOption = {
+  id: string;
+  label: string;
+  enabled: boolean;
+};
+
+export type GuidedLiveAwareness = {
+  populatedTrackNames: string[];
+  populatedSceneNames: string[];
+  foundationStatus: Record<GuidedFoundationId, GuidedProgressStatus>;
+  continuationStatus: Record<GuidedContinuationId, GuidedProgressStatus>;
+  effectiveFoundations: GuidedFoundationId[];
+  effectiveContinuations: GuidedContinuationId[];
+  readyChainIds: GuidedChainId[];
+};
+
 const CORE_KIT_QUERY = "909 Core Kit";
+const SINGLE_SCENE_NAMES = ["Verse 1"] as const;
+const LOOP_SCENE_NAMES = ["Verse 1", "Verse 2"] as const;
 const NOTE_OFFSETS: Record<string, number> = {
   C: 0,
   "C#": 1,
@@ -135,7 +165,7 @@ const HOUSE_TRACKS = {
   snare: { trackName: "Snare", role: "drums" as const, pattern: "house-snare" as const, instrumentQuery: CORE_KIT_QUERY, transposeWithKey: false },
   hats: { trackName: "Hats", role: "drums" as const, pattern: "house-hats" as const, instrumentQuery: CORE_KIT_QUERY, transposeWithKey: false },
   bass: { trackName: "Bass", role: "bass" as const, pattern: "house-bass" as const, instrumentQuery: "Synth Pop Bass", transposeWithKey: true },
-  chords: { trackName: "Chords", role: "keys" as const, pattern: "house-chords" as const, instrumentQuery: "House Chords", transposeWithKey: true },
+  chords: { trackName: "Chords", role: "keys" as const, pattern: "house-chords" as const, instrumentQuery: "A Soft Chord.adv", transposeWithKey: true },
   lead: { trackName: "Lead", role: "lead" as const, pattern: "lead-riff" as const, instrumentQuery: "Filtered Sync Lead", transposeWithKey: true },
   pad: { trackName: "Chords", role: "keys" as const, pattern: "pad-block" as const, transposeWithKey: true },
 };
@@ -332,6 +362,28 @@ export const createGuidedSessionState = (): GuidedSessionState => ({
   completedContinuations: [],
 });
 
+const getActiveScope = (state: GuidedSessionState): GuidedScopeId => state.scope ?? "song";
+
+export const getScopeChoices = (): { id: GuidedScopeId; label: string }[] => [
+  { id: "single_scene", label: "Single scene" },
+  { id: "one_part", label: "One part" },
+  { id: "loop", label: "Loop starter" },
+  { id: "song", label: "Song sketch" },
+];
+
+export const getScopeLabel = (scopeId: GuidedScopeId): string => {
+  switch (scopeId) {
+    case "single_scene":
+      return "Single scene";
+    case "one_part":
+      return "One part";
+    case "loop":
+      return "Loop starter";
+    case "song":
+      return "Song sketch";
+  }
+};
+
 export const getGenreLabel = (genreId: GuidedGenreId): string => GENRES[genreId].label;
 export const getGenreTempo = (genreId: GuidedGenreId): number => GENRES[genreId].tempo;
 
@@ -342,6 +394,25 @@ export const getScaleChoices = (): { id: GuidedScaleMode; label: string }[] => [
 
 export const getKeyChoices = (genreId: GuidedGenreId, scaleMode: GuidedScaleMode): KeyChoice[] =>
   GENRES[genreId].keyChoices[scaleMode];
+
+export const getTonalContextChoices = (genreId: GuidedGenreId): TonalContextChoice[] =>
+  getScaleChoices().flatMap((scaleChoice) =>
+    getKeyChoices(genreId, scaleChoice.id).map((keyChoice) => ({
+      id: `${scaleChoice.id}_${keyChoice.id}`,
+      label: `${keyChoice.label} ${scaleChoice.label.toLowerCase()}`,
+      key: keyChoice.id,
+      scaleMode: scaleChoice.id,
+    })),
+  );
+
+export const getFoundationStepLabel = (genreId: GuidedGenreId, stepId: GuidedFoundationId): string =>
+  GENRES[genreId].foundations.find((step) => step.id === stepId)?.label ?? stepId;
+
+export const getContinuationStepLabel = (genreId: GuidedGenreId, stepId: GuidedContinuationId): string =>
+  GENRES[genreId].continuations.find((step) => step.id === stepId)?.label ?? stepId;
+
+export const getChainOptionLabel = (genreId: GuidedGenreId, chainId: GuidedChainId): string =>
+  GENRES[genreId].chainOptions.find((option) => option.id === chainId)?.label ?? chainId;
 
 export const getAvailableFoundationSteps = (
   genreId: GuidedGenreId,
@@ -376,6 +447,17 @@ export const selectChain = (state: GuidedSessionState, chainId: GuidedChainId): 
   selectedChain: chainId,
 });
 
+export const chooseScope = (state: GuidedSessionState, scope: GuidedScopeId): GuidedSessionState => ({
+  ...state,
+  scope,
+  genre: undefined,
+  scaleMode: undefined,
+  key: undefined,
+  completedFoundations: [],
+  completedContinuations: [],
+  selectedChain: undefined,
+});
+
 export const chooseScaleMode = (state: GuidedSessionState, scaleMode: GuidedScaleMode): GuidedSessionState => ({
   ...state,
   scaleMode,
@@ -385,6 +467,16 @@ export const chooseScaleMode = (state: GuidedSessionState, scaleMode: GuidedScal
 export const chooseKey = (state: GuidedSessionState, key: string): GuidedSessionState => ({
   ...state,
   key,
+});
+
+export const chooseTonalContext = (
+  state: GuidedSessionState,
+  key: string,
+  scaleMode: GuidedScaleMode,
+): GuidedSessionState => ({
+  ...state,
+  key,
+  scaleMode,
 });
 
 const dedupeClips = (clips: SceneTrackSpec[]): SceneTrackSpec[] => {
@@ -399,7 +491,50 @@ const dedupeClips = (clips: SceneTrackSpec[]): SceneTrackSpec[] => {
   });
 };
 
-const houseFoundationClips = (sceneName: string, foundationId: GuidedFoundationId): SceneTrackSpec[] => {
+const getScopeSceneNames = (genreId: GuidedGenreId, scope: GuidedScopeId): string[] => {
+  if (scope === "single_scene") {
+    return GENRES[genreId].sceneOrder.filter((sceneName) =>
+      (SINGLE_SCENE_NAMES as readonly string[]).includes(sceneName),
+    );
+  }
+  if (scope === "loop") {
+    return GENRES[genreId].sceneOrder.filter((sceneName) =>
+      (LOOP_SCENE_NAMES as readonly string[]).includes(sceneName),
+    );
+  }
+  return [...GENRES[genreId].sceneOrder];
+};
+
+const getFoundationBaseClips = (
+  genreId: GuidedGenreId,
+  foundationId: GuidedFoundationId,
+): SceneTrackSpec[] => {
+  if (genreId === "house") {
+    switch (foundationId) {
+      case "drums":
+        return [HOUSE_TRACKS.kick, HOUSE_TRACKS.snare, HOUSE_TRACKS.hats];
+      case "bassline":
+        return [HOUSE_TRACKS.bass];
+      case "chords":
+        return [HOUSE_TRACKS.chords];
+      default:
+        return [];
+    }
+  }
+
+  switch (foundationId) {
+    case "drums":
+      return [DNB_TRACKS.kick, DNB_TRACKS.snare, DNB_TRACKS.hats];
+    case "bassline":
+      return [DNB_TRACKS.bass];
+    case "pads":
+      return [DNB_TRACKS.pads];
+    default:
+      return [];
+  }
+};
+
+const houseSongFoundationClips = (sceneName: string, foundationId: GuidedFoundationId): SceneTrackSpec[] => {
   switch (foundationId) {
     case "drums":
       if (sceneName === "Intro") return [HOUSE_TRACKS.kick, HOUSE_TRACKS.hats];
@@ -421,7 +556,7 @@ const houseFoundationClips = (sceneName: string, foundationId: GuidedFoundationI
   }
 };
 
-const dnbFoundationClips = (sceneName: string, foundationId: GuidedFoundationId): SceneTrackSpec[] => {
+const dnbSongFoundationClips = (sceneName: string, foundationId: GuidedFoundationId): SceneTrackSpec[] => {
   switch (foundationId) {
     case "drums":
       if (sceneName === "Intro" || sceneName === "Outro") return [DNB_TRACKS.hats];
@@ -460,26 +595,305 @@ const leadClipsForContinuation = (
   return [];
 };
 
-const getFoundationClipsForScene = (
+const getSongFoundationClipsForScene = (
   genreId: GuidedGenreId,
   foundationId: GuidedFoundationId,
   sceneName: string,
 ): SceneTrackSpec[] => {
   if (genreId === "house") {
-    return houseFoundationClips(sceneName, foundationId);
+    return houseSongFoundationClips(sceneName, foundationId);
   }
-  return dnbFoundationClips(sceneName, foundationId);
+  return dnbSongFoundationClips(sceneName, foundationId);
+};
+
+const getFoundationClipsForScene = (
+  genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
+  foundationId: GuidedFoundationId,
+  sceneName: string,
+): SceneTrackSpec[] => {
+  const scope = getActiveScope(guidedState);
+  if (scope === "song") {
+    return getSongFoundationClipsForScene(genreId, foundationId, sceneName);
+  }
+  if (!getScopeSceneNames(genreId, scope).includes(sceneName)) {
+    return [];
+  }
+  return getFoundationBaseClips(genreId, foundationId);
 };
 
 const getSceneSpecsForFoundations = (
   genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
   sceneName: string,
   foundationIds: GuidedFoundationId[],
   continuationIds: GuidedContinuationId[],
 ): SceneTrackSpec[] => {
-  const clips = foundationIds.flatMap((foundationId) => getFoundationClipsForScene(genreId, foundationId, sceneName));
+  const clips = foundationIds.flatMap((foundationId) =>
+    getFoundationClipsForScene(genreId, guidedState, foundationId, sceneName),
+  );
   const leadClips = continuationIds.flatMap((continuationId) => leadClipsForContinuation(genreId, continuationId, sceneName));
   return dedupeClips([...clips, ...leadClips]);
+};
+
+const getFoundationTargetSceneNames = (
+  genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
+  foundationId: GuidedFoundationId,
+): string[] => {
+  const scope = getActiveScope(guidedState);
+  if (scope === "song") {
+    return GENRES[genreId].sceneOrder.filter(
+      (sceneName) => getSongFoundationClipsForScene(genreId, foundationId, sceneName).length > 0,
+    );
+  }
+  return getScopeSceneNames(genreId, scope).filter(
+    (sceneName) => getFoundationClipsForScene(genreId, guidedState, foundationId, sceneName).length > 0,
+  );
+};
+
+const getLeadTrackName = (genreId: GuidedGenreId): string =>
+  genreId === "house" ? HOUSE_TRACKS.lead.trackName : DNB_TRACKS.lead.trackName;
+
+const toProgressStatus = (completed: number, total: number): GuidedProgressStatus => {
+  if (completed <= 0 || total <= 0) {
+    return "missing";
+  }
+  if (completed >= total) {
+    return "complete";
+  }
+  return "partial";
+};
+
+const buildSceneTrackMap = (
+  genreId: GuidedGenreId,
+  state: LiveState,
+): Record<string, Set<string>> => {
+  const names = new Set(GENRES[genreId].sceneOrder);
+  const sceneTrackMap = Object.fromEntries(
+    GENRES[genreId].sceneOrder.map((sceneName) => [sceneName, new Set<string>()]),
+  ) as Record<string, Set<string>>;
+
+  for (const sceneId of state.sceneOrder) {
+    const scene = state.scenes[sceneId];
+    if (!scene || !names.has(scene.name)) {
+      continue;
+    }
+
+    for (const trackId of state.trackOrder) {
+      const track = state.tracks[trackId];
+      if (!track || !track.clips[`clip_${scene.index}`]) {
+        continue;
+      }
+      sceneTrackMap[scene.name].add(track.name);
+    }
+  }
+
+  return sceneTrackMap;
+};
+
+export const getGuidedLiveAwareness = (
+  genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
+  state: LiveState,
+): GuidedLiveAwareness => {
+  const scope = getActiveScope(guidedState);
+  const populatedTrackNames = new Set(
+    state.trackOrder
+      .map((trackId) => state.tracks[trackId])
+      .filter((track) => track && track.clipOrder.length > 0)
+      .map((track) => track.name),
+  );
+  const sceneTrackMap = buildSceneTrackMap(genreId, state);
+  const populatedSceneNames = GENRES[genreId].sceneOrder.filter(
+    (sceneName) => (sceneTrackMap[sceneName]?.size ?? 0) > 0,
+  );
+
+  const foundationStatus = Object.fromEntries(
+    GUIDED_FOUNDATION_IDS.map((foundationId) => {
+      if (scope === "song") {
+        const trackNames = Array.from(
+          new Set(
+            GENRES[genreId].sceneOrder.flatMap((sceneName) =>
+              getSongFoundationClipsForScene(genreId, foundationId, sceneName).map((clip) => clip.trackName),
+            ),
+          ),
+        );
+        const presentTrackCount = trackNames.filter((trackName) => populatedTrackNames.has(trackName)).length;
+        return [foundationId, toProgressStatus(presentTrackCount, trackNames.length)];
+      }
+
+      const targetSceneNames = getFoundationTargetSceneNames(genreId, guidedState, foundationId);
+      const coveredSceneCount = targetSceneNames.filter((sceneName) => {
+        const requiredTrackNames = Array.from(
+          new Set(
+            getFoundationClipsForScene(genreId, guidedState, foundationId, sceneName).map((clip) => clip.trackName),
+          ),
+        );
+        if (requiredTrackNames.length === 0) {
+          return false;
+        }
+        return requiredTrackNames.every((trackName) => sceneTrackMap[sceneName]?.has(trackName) ?? false);
+      }).length;
+      return [foundationId, toProgressStatus(coveredSceneCount, targetSceneNames.length)];
+    }),
+  ) as Record<GuidedFoundationId, GuidedProgressStatus>;
+
+  const continuationStatus = Object.fromEntries(
+    GUIDED_CONTINUATION_IDS.map((continuationId) => {
+      if (scope !== "song") {
+        return [continuationId, "missing"];
+      }
+
+      const continuation = GENRES[genreId].continuations.find((step) => step.id === continuationId);
+      if (!continuation) {
+        return [continuationId, "missing"];
+      }
+
+      const populatedSceneCount = continuation.sceneNames.filter(
+        (sceneName) => (sceneTrackMap[sceneName]?.size ?? 0) > 0,
+      ).length;
+
+      if (continuationId === "verse_variation") {
+        const leadTrackName = getLeadTrackName(genreId);
+        const hasLead = continuation.sceneNames.some(
+          (sceneName) => sceneTrackMap[sceneName]?.has(leadTrackName) ?? false,
+        );
+        const status =
+          populatedSceneCount === continuation.sceneNames.length && hasLead
+            ? "complete"
+            : populatedSceneCount > 0 || hasLead
+              ? "partial"
+              : "missing";
+        return [continuationId, status];
+      }
+
+      return [continuationId, toProgressStatus(populatedSceneCount, continuation.sceneNames.length)];
+    }),
+  ) as Record<GuidedContinuationId, GuidedProgressStatus>;
+
+  const effectiveFoundations = GUIDED_FOUNDATION_IDS.filter(
+    (foundationId) => foundationStatus[foundationId] === "complete",
+  );
+  const effectiveContinuations = GUIDED_CONTINUATION_IDS.filter(
+    (continuationId) => continuationStatus[continuationId] === "complete",
+  );
+  const readyChainIds = scope !== "song" ? [] : GUIDED_CHAIN_IDS.filter((chainId) => {
+    const chain = GENRES[genreId].chainOptions.find((option) => option.id === chainId);
+    if (!chain) {
+      return false;
+    }
+    const populatedSceneCount = chain.sceneNames.filter(
+      (sceneName) => (sceneTrackMap[sceneName]?.size ?? 0) > 0,
+    ).length;
+    return populatedSceneCount >= 2;
+  });
+
+  return {
+    populatedTrackNames: Array.from(populatedTrackNames),
+    populatedSceneNames,
+    foundationStatus,
+    continuationStatus,
+    effectiveFoundations,
+    effectiveContinuations,
+    readyChainIds,
+  };
+};
+
+export const mergeGuidedProgressFromState = (
+  genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
+  state: LiveState,
+): GuidedSessionState => {
+  const awareness = getGuidedLiveAwareness(genreId, guidedState, state);
+  return {
+    ...guidedState,
+    completedFoundations: [...awareness.effectiveFoundations],
+    completedContinuations: [...awareness.effectiveContinuations],
+  };
+};
+
+const getFoundationBuildScore = (basePriority: number, status: GuidedProgressStatus): number =>
+  (status === "partial" ? 400 : 300) + basePriority;
+
+const getContinuationBuildScore = (basePriority: number, status: GuidedProgressStatus): number =>
+  (status === "partial" ? 220 : 180) + basePriority;
+
+export const getGuidedBuildOptions = (
+  genreId: GuidedGenreId,
+  guidedState: GuidedSessionState,
+  state: LiveState,
+): GuidedBuildOption[] => {
+  const scope = getActiveScope(guidedState);
+  const awareness = getGuidedLiveAwareness(genreId, guidedState, state);
+  const hasFoundationBase = awareness.effectiveFoundations.length > 0;
+  const foundationMap = new Map(GENRES[genreId].foundations.map((step) => [step.id, step]));
+  const continuationMap = new Map(GENRES[genreId].continuations.map((step) => [step.id, step]));
+
+  const entries: Array<{ option: GuidedBuildOption; score: number }> = [];
+
+  for (const node of GUIDED_BUILD_GRAPH[genreId]) {
+    if (node.allowedScopes && !node.allowedScopes.includes(scope)) {
+      continue;
+    }
+
+    if (node.kind === "foundation") {
+      const step = foundationMap.get(node.stepId);
+      if (!step) {
+        continue;
+      }
+
+      const status = awareness.foundationStatus[node.stepId];
+      if (status === "complete") {
+        continue;
+      }
+
+      entries.push({
+        option: {
+          id: node.id,
+          label: status === "partial" ? node.resumeLabel : step.label,
+          enabled: true,
+        },
+        score: getFoundationBuildScore(node.basePriority, status),
+      });
+      continue;
+    }
+
+    if (node.kind === "continuation") {
+      const step = continuationMap.get(node.stepId);
+      if (!step) {
+        continue;
+      }
+
+      const status = awareness.continuationStatus[node.stepId];
+      if (status === "complete") {
+        continue;
+      }
+
+      entries.push({
+        option: {
+          id: node.id,
+          label: status === "partial" ? node.resumeLabel : step.label,
+          enabled: status === "partial" || !node.requiresAnyFoundation || hasFoundationBase,
+        },
+        score: getContinuationBuildScore(node.basePriority, status),
+      });
+      continue;
+    }
+
+    entries.push({
+      option: {
+        id: node.id,
+        label: node.label,
+        enabled: awareness.readyChainIds.length >= node.minReadyChains,
+      },
+      score: 100 + node.basePriority,
+    });
+  }
+
+  return entries
+    .sort((left, right) => right.score - left.score)
+    .map((entry) => entry.option);
 };
 
 export const clearSessionForGuidedStart = async (server: WizardSessionController, hooks?: GuidedActionHooks): Promise<string[]> => {
@@ -792,18 +1206,23 @@ export const applyFoundationStep = async (
   const messages: string[] = [];
   try {
     await ensureGenreTempo(server, genreId, messages, hooks);
-    const existingSceneNames = await getExistingGuidedSceneNames(server, genreId);
-    const candidateSceneNames = existingSceneNames.length > 0 ? existingSceneNames : ["Verse 1"];
-    let targetSceneNames = candidateSceneNames.filter(
-      (sceneName) => getFoundationClipsForScene(genreId, stepId, sceneName).length > 0,
-    );
+    let targetSceneNames: string[];
+    if (getActiveScope(guidedState) === "song") {
+      const existingSceneNames = await getExistingGuidedSceneNames(server, genreId);
+      const candidateSceneNames = existingSceneNames.length > 0 ? existingSceneNames : ["Verse 1"];
+      targetSceneNames = candidateSceneNames.filter(
+        (sceneName) => getFoundationClipsForScene(genreId, guidedState, stepId, sceneName).length > 0,
+      );
 
-    if (targetSceneNames.length === 0) {
-      targetSceneNames = ["Verse 1"];
+      if (targetSceneNames.length === 0) {
+        targetSceneNames = ["Verse 1"];
+      }
+    } else {
+      targetSceneNames = getFoundationTargetSceneNames(genreId, guidedState, stepId);
     }
 
     for (const sceneName of targetSceneNames) {
-      const clips = getFoundationClipsForScene(genreId, stepId, sceneName);
+      const clips = getFoundationClipsForScene(genreId, guidedState, stepId, sceneName);
       for (const clip of clips) {
         await ensureSceneClip(server, genreId, guidedState, sceneName, clip, messages, hooks);
       }
@@ -826,6 +1245,10 @@ export const applyContinuationStep = async (
   stepId: GuidedContinuationId,
   hooks?: GuidedActionHooks,
 ): Promise<string[]> => {
+  if (getActiveScope(guidedState) !== "song") {
+    throw new Error("Continuation steps are only available in song sketch mode.");
+  }
+
   const step = GENRES[genreId].continuations.find((item) => item.id === stepId);
   if (!step) {
     throw new Error(`Unknown continuation step: ${stepId}`);
@@ -839,6 +1262,7 @@ export const applyContinuationStep = async (
       await ensureScene(server, genreId, sceneName, messages, hooks);
       const clips = getSceneSpecsForFoundations(
         genreId,
+        guidedState,
         sceneName,
         guidedState.completedFoundations,
         stepId === "verse_variation"
@@ -872,7 +1296,7 @@ export const applyChainChoice = async (
     throw new Error(`Unknown chain option: ${chainId}`);
   }
 
-  const messages = [`Chain selected: ${chain.label}. Auto-advance is not implemented yet.`];
+  const messages = [`Using chain: ${chain.label}. Auto-advance is not implemented yet.`];
   try {
     await ensureGenreTempo(server, genreId, messages, hooks);
     const state = await server.refreshState();

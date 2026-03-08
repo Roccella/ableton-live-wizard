@@ -4,4 +4,5 @@ contextBridge.exposeInMainWorld("wizardDesktop", {
   bootstrap: () => ipcRenderer.invoke("wizard:bootstrap"),
   submitPrompt: (input) => ipcRenderer.invoke("wizard:submit-prompt", input),
   chooseOption: (optionId) => ipcRenderer.invoke("wizard:choose-option", optionId),
+  setWindowTitle: (title) => ipcRenderer.invoke("wizard:set-window-title", title),
 });

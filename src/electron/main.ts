@@ -223,6 +223,11 @@ ipcMain.handle("wizard:submit-prompt", async (_event, input: string) =>
 ipcMain.handle("wizard:choose-option", async (_event, optionId: string) =>
   chatSession.chooseOption(optionId, service.describeConnection()),
 );
+ipcMain.handle("wizard:set-window-title", async (_event, title: string) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(String(title));
+  }
+});
 
 app.on("window-all-closed", () => {
   logMain("app:window-all-closed");

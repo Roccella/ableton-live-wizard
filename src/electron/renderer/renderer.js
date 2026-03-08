@@ -3,11 +3,9 @@ const state = {
   pending: false,
   focusMode: "input",
   optionIndex: 0,
-  header: null,
 };
 
 const elements = {
-  header: document.getElementById("app-header"),
   chatFeed: document.getElementById("chat-feed"),
   composerForm: document.getElementById("composer-form"),
   promptInput: document.getElementById("prompt-input"),
@@ -29,6 +27,14 @@ const activePromptState = () =>
 
 const hasOptions = () => activePromptState().options.length > 0;
 
+const updateWindowTitle = async (connection) => {
+  const title = `Ableton Live Wizard - ${connection ? "Connected" : "Disconnected"}`;
+  document.title = title;
+  if (typeof window.wizardDesktop?.setWindowTitle === "function") {
+    await window.wizardDesktop.setWindowTitle(title);
+  }
+};
+
 const clampOptionIndex = () => {
   const optionCount = activePromptState().options.length;
   if (optionCount === 0) {
@@ -40,6 +46,7 @@ const clampOptionIndex = () => {
 };
 
 const syncFocus = () => {
+  updateOptionSelection();
   requestAnimationFrame(() => {
     if (state.focusMode === "options" && hasOptions()) {
       const button = elements.chatFeed.querySelector(`[data-choice-index="${state.optionIndex}"]`);
@@ -56,32 +63,6 @@ const getOptionVariant = (optionId) => {
   if (optionId === "back" || optionId === "guided_undo") return "ghost";
   if (optionId === "prepare_clear") return "danger";
   return "action";
-};
-
-const renderHeader = () => {
-  if (!state.header) {
-    elements.header.innerHTML = `
-      <div class="header-status">
-        <span class="status-dot is-disconnected"></span>
-        <span>Connecting</span>
-      </div>
-    `;
-    return;
-  }
-
-  const { connection, bpm, trackCount } = state.header;
-  const isConnected = Boolean(connection);
-
-  elements.header.innerHTML = `
-    <div class="header-status">
-      <span class="status-dot${isConnected ? "" : " is-disconnected"}"></span>
-      <span>${isConnected ? "Connected" : "Disconnected"}</span>
-    </div>
-    <div class="header-meta">
-      <span class="meta-value">${bpm}</span> BPM
-      ${trackCount > 0 ? `<span class="meta-value">${trackCount}</span> tracks` : ""}
-    </div>
-  `;
 };
 
 const renderOptionsGroup = () => {
@@ -202,6 +183,7 @@ const renderChat = () => {
 
 const applySnapshot = (snapshot) => {
   state.snapshot = snapshot;
+  void updateWindowTitle(snapshot.connection);
   clampOptionIndex();
 
   const hasPromptOptions = snapshot.promptState.options.length > 0;
@@ -268,6 +250,13 @@ elements.composerForm.addEventListener("submit", async (event) => {
   if (!state.pending) await handleSubmit();
 });
 
+elements.promptInput.addEventListener("focus", () => {
+  if (state.focusMode !== "input") {
+    state.focusMode = "input";
+    updateOptionSelection();
+  }
+});
+
 elements.promptInput.addEventListener("keydown", async (event) => {
   if (state.pending) return;
 
@@ -292,24 +281,13 @@ elements.promptInput.addEventListener("keydown", async (event) => {
   }
 });
 
-renderHeader();
-
 window.wizardDesktop
   .bootstrap()
   .then((data) => {
-    state.header = {
-      connection: data.connection,
-      bpm: data.state?.transport?.bpm ?? 0,
-      trackCount: data.state?.trackCount ?? 0,
-      sceneCount: data.state?.sceneCount ?? 0,
-    };
-    renderHeader();
     applySnapshot(data);
   })
   .catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
-    state.header = { connection: "", bpm: 0, trackCount: 0, sceneCount: 0 };
-    renderHeader();
     applySnapshot({
       connection: "",
       inputPlaceholder: "Write a prompt.",

@@ -23,18 +23,21 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 ### V3 - Guided Scene Builder With Fixed Genre Trees
 - Startup UX should begin with agent-style questions and selectable options.
 - The startup tree should first ask whether to clear the set or keep the current material.
-- After genre choice, the guide should ask for fixed scale mode and key before creating content.
+- After set preparation, the companion should ask for `scope -> genre -> tonal context` before creating content.
 - User can still type freely, but the main validation surface is a fixed decision tree.
+- The companion can already map a first set of English natural-language requests onto that guided tree, but open-ended composition chat is still future work.
 - First fixed trees are `House` and `Drum n bass`.
-- Each genre offers fixed starting points and fixed continuation steps.
+- `Song sketch` keeps fixed continuation and chain steps, while `Single scene`, `One part`, and `Loop starter` stay foundation-first.
 - Current fixed scenes are ordered explicitly (`Intro`, `Verse 1`, `Verse 2`, `Build Up`, `Drop`, `Outro`).
 - Use fixed Ableton stock instruments, fixed clip patterns, and fixed scene structure.
 - Goal is to build a complete demo track for UX validation, not a musically finished release.
 - Scenes are treated as the first arrangement surface.
+- Non-song scopes should track completion by scene coverage, not only by track existence.
 - Song-mode / groovebox-style scene loop counts are a likely extension of this stage.
 - Current checkpoint: the terminal UI can already build very basic full tracks end to end for `House` and `Drum n bass`.
-- Remaining focus: improve decision-tree UX, contextual suggestions, pattern quality, preset quality, and scene/application logic.
-- Status: in progress, with first usable end-to-end demo milestone reached.
+- Current checkpoint: the Electron companion now also has a first stable chat-first checkpoint for the same constrained guided flows.
+- Remaining focus: improve decision-tree UX, contextual suggestions, pattern quality, preset quality, scene/application logic, and the future planner layer for broader natural-language composition requests.
+- Status: in progress, with first usable end-to-end demo milestone reached and current Electron companion stability back above the experimentation threshold.
 
 ### V4 - Richer Clip Manipulation And Editing
 - Move from fixed test clips to more musical clip generation/manipulation.
@@ -55,7 +58,7 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Producer creates a lead track, loads a sound, and writes a basic Session clip to audition it.
 - Producer renames or deletes tracks while playback is running.
 - Producer makes a manual change in Live, then asks the agent for another action without losing sync.
-- Producer starts the TUI, chooses `House` or `Drum n bass`, and walks the fixed tree until a multi-scene demo exists.
+- Producer starts the companion, chooses a scope, genre, and tonal context, then walks the fixed tree until a multi-scene demo exists.
 - Producer uses scenes as arrangement primitives before any true Arrangement View workflow exists.
 
 ## Technical Plan

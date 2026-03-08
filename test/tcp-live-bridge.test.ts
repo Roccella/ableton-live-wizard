@@ -87,3 +87,138 @@ test("tcp bridge toBars handles both regular and zero-denominator inputs", () =>
   assert.equal(bridge.toBars(6, 3, 4), 2);
   assert.equal(bridge.toBars(8, 4, 0), 0);
 });
+
+test("tcp bridge accepts both newline-delimited and EOF-delimited responses", () => {
+  const bridge = new TcpLiveBridge() as any;
+  const payload = '{"status":"success","result":{}}';
+
+  assert.equal(
+    bridge.extractResponsePayload(`${payload}\n`),
+    payload,
+  );
+  assert.equal(
+    bridge.extractResponsePayload(payload, false),
+    payload,
+  );
+  assert.equal(
+    bridge.extractResponsePayload('{"status":"success"', false),
+    undefined,
+  );
+  assert.equal(bridge.extractResponsePayload("", true), undefined);
+  assert.equal(bridge.extractResponsePayload('{"status":"success"', true), undefined);
+});
+
+test("tcp bridge prefers the exact preset match using hinted query paths", async () => {
+  const bridge = new TcpLiveBridge() as any;
+
+  bridge.sendCommand = async (type: string, params: Record<string, unknown>) => {
+    assert.equal(type, "get_browser_items_at_path");
+    const path = String(params.path);
+
+    if (path === "instruments/Wavetable/Synth Keys") {
+      return {
+        path,
+        items: [
+          {
+            name: "A Soft Chord",
+            is_folder: false,
+            is_loadable: true,
+            uri: "instrument-a-soft-chord",
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Unexpected browser path: ${path}`);
+  };
+
+  const selection = await bridge.resolveInstrumentSelection({ query: "A Soft Chord.adv" });
+
+  assert.equal(selection.name, "A Soft Chord");
+  assert.equal(selection.uri, "instrument-a-soft-chord");
+});
+
+test("tcp bridge uses hinted query paths for fixed starter presets", async () => {
+  const bridge = new TcpLiveBridge() as any;
+  const visitedPaths: string[] = [];
+
+  bridge.sendCommand = async (type: string, params: Record<string, unknown>) => {
+    assert.equal(type, "get_browser_items_at_path");
+    const path = String(params.path);
+    visitedPaths.push(path);
+
+    if (path === "sounds/Bass") {
+      return {
+        path,
+        items: [
+          {
+            name: "Synth Pop Bass.adg",
+            is_folder: false,
+            is_loadable: true,
+            uri: "query:Sounds#Bass:FileId_67085",
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Unexpected browser path: ${path}`);
+  };
+
+  const selection = await bridge.resolveInstrumentSelection({ query: "Synth Pop Bass" });
+
+  assert.equal(selection.name, "Synth Pop Bass.adg");
+  assert.equal(selection.uri, "query:Sounds#Bass:FileId_67085");
+  assert.deepEqual(visitedPaths, ["sounds/Bass"]);
+});
+
+test("tcp bridge does not recurse into root subfolders after a direct root match", async () => {
+  const bridge = new TcpLiveBridge() as any;
+  const visitedPaths: string[] = [];
+
+  bridge.sendCommand = async (type: string, params: Record<string, unknown>) => {
+    assert.equal(type, "get_browser_items_at_path");
+    const path = String(params.path);
+    visitedPaths.push(path);
+
+    if (path === "drums") {
+      return {
+        path,
+        items: [],
+      };
+    }
+
+    if (path === "sounds") {
+      return {
+        path,
+        items: [
+          {
+            name: "909 Core Kit",
+            is_folder: false,
+            is_loadable: true,
+            uri: "sounds-909-core-kit",
+          },
+          {
+            name: "Huge Folder",
+            is_folder: true,
+            is_loadable: false,
+            uri: null,
+          },
+        ],
+      };
+    }
+
+    if (path === "instruments") {
+      return {
+        path,
+        items: [],
+      };
+    }
+
+    throw new Error(`Unexpected browser path: ${path}`);
+  };
+
+  const selection = await bridge.resolveInstrumentSelection({ query: "909 Core Kit" });
+
+  assert.equal(selection.uri, "sounds-909-core-kit");
+  assert.deepEqual(visitedPaths, ["drums", "sounds"]);
+});
