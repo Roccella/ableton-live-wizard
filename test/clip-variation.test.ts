@@ -20,7 +20,7 @@ const sourceClip: MidiClip = {
   cc: [],
 };
 
-test("createClipVariation resolve doubles the clip and lands on a firmer ending", () => {
+test("createClipVariation resolve expands a 16-beat clip to 32 beats and lands on a firmer ending", () => {
   const variation = createClipVariation(sourceClip, "resolve");
   const analysis = analyzeMidiClip({
     ...sourceClip,

@@ -330,7 +330,7 @@ test("analyze clip summarizes the selected clip", async () => {
   assert.ok(result.message.includes("root C"));
 });
 
-test("vary clip resolve rewrites a 4-bar clip into 8 bars", async () => {
+test("vary clip resolve rewrites a 16-beat clip into 32 beats", async () => {
   const ctrl = makeController();
   await ctrl.applyOperation("create_midi_clip", {
     trackRef: "track_1",
@@ -351,7 +351,7 @@ test("vary clip resolve rewrites a 4-bar clip into 8 bars", async () => {
     selectedTrackId: "track_1",
     selectedClipId: "clip_0",
   });
-  assert.ok(result.message.includes("Extended the clip to 8 bars"));
+  assert.ok(result.message.includes("Extended the clip from 16 beats to 32 beats"));
 
   const state = await ctrl.getState(true);
   assert.equal(state.tracks["track_1"].clips["clip_0"].bars, 8);
@@ -426,6 +426,31 @@ test("vary clip rejects unknown intents", async () => {
       selectedClipId: "clip_0",
     }),
     /Unknown clip variation intent/,
+  );
+});
+
+test("vary clip rejects clips that are not 16 beats long", async () => {
+  const ctrl = makeController();
+  await ctrl.applyOperation("create_midi_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    bars: 2,
+  });
+  await ctrl.applyOperation("edit_notes", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    notes: [
+      { pitch: 36, velocity: 90, start: 0, duration: 0.5 },
+      { pitch: 36, velocity: 88, start: 7, duration: 0.5 },
+    ],
+  });
+
+  await assert.rejects(
+    () => executePromptCommand(ctrl, "vary clip resolve", {
+      selectedTrackId: "track_1",
+      selectedClipId: "clip_0",
+    }),
+    /expects a 16-beat clip/,
   );
 });
 

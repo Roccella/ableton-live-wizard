@@ -43,7 +43,7 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Narrow the next musical-quality spike to `House` only while keeping the existing `Drum n bass` path as a regression/demo flow.
 - Introduce a composition prompt contract: short freeform prompts are allowed, but each prompt should target one intent and multi-intent requests are reformulated instead of applied.
 - Add a product-facing request guide in `docs/user-guide.md`.
-- Add selected-clip musical analysis and a first deterministic `4 bars -> 8 bars` variation workflow for exact prompt commands.
+- Add selected-clip musical analysis and a first deterministic `16 beats -> 32 beats` variation workflow for exact prompt commands.
 - Introduce a first descriptor layer for `track` and `clip` requests, starting with `dark/bright`, `sad/happy`, `rigid/loose`, `minimal/dense`, `calm/frenetic`, and `soft/aggressive`.
 - Build a curated `House` corpus from included Ableton packs plus one medium external MIDI pack.
 - Treat `RAG` here as retrieval and ranking over curated MIDI clips, patterns, and bundles.
@@ -93,6 +93,6 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Agent startup can guide the user into at least one full fixed-genre demo flow.
 - Manual edits in Live do not break the next command because state is refreshed first.
 - Current acceptance checkpoint achieved: the user can reach a very basic complete track structure from the single-terminal interface without leaving the guided flow.
-- Current acceptance checkpoint achieved: the user can analyze a selected MIDI clip and expand a selected 4-bar clip into an 8-bar variation with `resolve`, `question`, or `mini_roll`.
+- Current acceptance checkpoint achieved: the user can analyze a selected MIDI clip and expand a selected 16-beat clip into a 32-beat variation with `resolve`, `question`, or `mini_roll`.
 - New near-term acceptance target: a short `House` prompt such as `darker bass`, `more rigid lead`, or `more minimal hats` maps to descriptor-aware retrieval without silently applying multi-intent guesses.
 - New near-term acceptance target: `docs/user-guide.md` matches the request surface the product actually supports.

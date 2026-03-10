@@ -289,9 +289,9 @@ Decision:
   - `vary clip resolve`
   - `vary clip question`
   - `vary clip mini_roll`
-- Keep the variation path deterministic and intentionally narrow: selected existing `4-bar -> 8-bar` MIDI clips, optimized first for `House` bass-first trials.
+- Keep the variation path deterministic and intentionally narrow: selected existing `16-beat -> 32-beat` MIDI clips, optimized first for `House` bass-first trials.
 Outcome:
-- The product can now read real clip notes, summarize a selected clip, and rewrite a selected 4-bar clip into an 8-bar variation with a clear ending intent.
+- The product can now read real clip notes, summarize a selected clip, and rewrite a selected 16-beat clip into a 32-beat variation with a clear ending intent.
 - The bridge/runtime gap for "work from what is already in Live" is smaller now, even though broader scene/song reasoning is still future work.
 
 ## Milestones

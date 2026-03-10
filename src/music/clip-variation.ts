@@ -10,6 +10,9 @@ export interface ClipVariationResult {
   summary: string;
 }
 
+const SOURCE_LENGTH_BEATS = 16;
+const TARGET_LENGTH_BEATS = 32;
+
 const sortNotes = (notes: MidiNote[]): MidiNote[] =>
   [...notes].sort((left, right) => {
     if (left.start !== right.start) return left.start - right.start;
@@ -60,14 +63,16 @@ export const createClipVariation = (
   if (clip.notes.length === 0) {
     throw new Error("Selected clip has no MIDI notes");
   }
-  if (clip.bars !== 4) {
-    throw new Error(`Clip variation currently expects a 4-bar clip, got ${clip.bars} bars`);
+  if (clip.lengthBeats !== SOURCE_LENGTH_BEATS) {
+    throw new Error(
+      `Clip variation currently expects a ${SOURCE_LENGTH_BEATS}-beat clip, got ${clip.lengthBeats} beats`,
+    );
   }
 
   const baseNotes = sortNotes(clip.notes);
   const analysis = analyzeMidiClip(clip);
   const duplicated = duplicateToSecondHalf(clip);
-  const extendedLength = clip.lengthBeats * 2;
+  const extendedLength = TARGET_LENGTH_BEATS;
   const extendedBars = clip.bars * 2;
   const secondHalfStart = clip.lengthBeats;
   const lastNote = duplicated.at(-1);
@@ -94,7 +99,7 @@ export const createClipVariation = (
       bars: extendedBars,
       lengthBeats: extendedLength,
       notes,
-      summary: "Extended the clip to 8 bars and turned bars 7-8 into a short bass pickup roll.",
+      summary: "Extended the clip from 16 beats to 32 beats and turned the ending into a short bass pickup roll.",
     };
   }
 
@@ -128,7 +133,7 @@ export const createClipVariation = (
     notes,
     summary:
       intent === "resolve"
-        ? "Extended the clip to 8 bars and made bars 5-8 land on a firmer root resolution."
-        : "Extended the clip to 8 bars and left bars 5-8 ending with a more open, unresolved question.",
+        ? "Extended the clip from 16 beats to 32 beats and made the second half land on a firmer root resolution."
+        : "Extended the clip from 16 beats to 32 beats and left the second half ending with a more open, unresolved question.",
   };
 };
