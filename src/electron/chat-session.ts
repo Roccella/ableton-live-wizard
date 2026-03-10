@@ -1,4 +1,4 @@
-import { WizardCompanionService } from "../companion/types.js";
+import { PromptContext, WizardCompanionService } from "../companion/types.js";
 import {
   matchPromptOptionFromInput,
   resolveGuidedIntent,
@@ -131,7 +131,7 @@ export class ElectronChatSession {
     }
 
     try {
-      const reply = await this.service.submitPrompt(input, {});
+      const reply = await this.service.submitPrompt(input, await this.resolvePromptContext());
       this.pushMessage("assistant", reply.message);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -149,6 +149,19 @@ export class ElectronChatSession {
     }
 
     return this.snapshot(connection);
+  }
+
+  private async resolvePromptContext(): Promise<PromptContext> {
+    try {
+      const state = await this.service.getState(true);
+      return {
+        selectedTrackId: state.selectedTrackId,
+        selectedSceneId: state.selectedSceneId,
+        selectedClipId: state.selectedClipId,
+      };
+    } catch {
+      return {};
+    }
   }
 
   async chooseOption(optionId: string, connection: string, echoUserChoice = true): Promise<CompanionPromptReply> {

@@ -3,7 +3,7 @@ import { LiveState, Track } from "../types.js";
 import { buildAgentPanelContent } from "./agent-panel.js";
 import { buildPromptPanelContent, measurePromptPanelHeight } from "./prompt-panel.js";
 import { createCompanionService } from "../companion/factory.js";
-import { WizardCompanionEvent, WizardCompanionService } from "../companion/types.js";
+import { PromptContext, WizardCompanionEvent, WizardCompanionService } from "../companion/types.js";
 import {
   applyChainChoice,
   applyContinuationStep,
@@ -904,11 +904,12 @@ export class WizardTuiApp {
   }
 
   private async executePrompt(input: string): Promise<string> {
+    const promptContext = await this.resolvePromptContext();
     debugLog("tui", "execute_prompt:start", {
       input,
-      selectedTrack: undefined,
-      selectedScene: undefined,
-      selectedClipId: undefined,
+      selectedTrack: promptContext.selectedTrackId,
+      selectedScene: promptContext.selectedSceneId,
+      selectedClipId: promptContext.selectedClipId,
     });
     const guidedResponse = await this.tryHandleGuidedInput(input);
 
@@ -917,7 +918,7 @@ export class WizardTuiApp {
     }
 
     if (input === "help") {
-      return "Commands: suggest, play, stop, undo, redo, tempo <n|+|->, scene play, clip play, create track [name], create scene [name], delete track, delete clip, delete scene, instrument <role|query>, create clip [bars], pattern <name> [bars], b/l/p/d.";
+      return "Commands: suggest, play, stop, undo, redo, refresh, tempo <n|+|->, scene play, clip play, analyze clip, vary clip <resolve|question|mini_roll>, create track [name], create scene [name], delete track, delete clip, delete scene, instrument <role|query>, create clip [bars], pattern <name> [bars], b/l/p/d.";
     }
     if (input === "suggest") {
       this.guidedState = createGuidedSessionState();
@@ -926,19 +927,57 @@ export class WizardTuiApp {
       return "Suggestions reopened.";
     }
     if (input === "refresh") {
-      await this.refreshState("State refreshed");
-      return "State refreshed";
+      const response = await this.service.submitPrompt(input, promptContext);
+      return response.message;
     }
     if (input === "play") {
       return this.playToggle();
     }
 
-    const response = await this.service.submitPrompt(input, {
-      selectedTrackId: undefined,
-      selectedSceneId: undefined,
-      selectedClipId: undefined,
-    });
+    const response = await this.service.submitPrompt(input, promptContext);
     return response.message;
+  }
+
+  private async resolvePromptContext(): Promise<PromptContext> {
+    const liveState = await this.service.getState(true);
+    this.currentState = liveState;
+
+    const liveContext: PromptContext = {
+      selectedTrackId: liveState.selectedTrackId,
+      selectedSceneId: liveState.selectedSceneId,
+      selectedClipId: liveState.selectedClipId,
+    };
+
+    const targetKind = this.currentGridTargetKind();
+    if (targetKind === "clip") {
+      const track = this.getSelectedTrack();
+      const scene = this.getSelectedScene();
+      return {
+        selectedTrackId: track?.id ?? liveContext.selectedTrackId,
+        selectedSceneId: scene?.id ?? liveContext.selectedSceneId,
+        selectedClipId: scene ? `clip_${scene.index}` : liveContext.selectedClipId,
+      };
+    }
+
+    if (targetKind === "scene") {
+      const scene = this.getSelectedScene();
+      return {
+        selectedTrackId: liveContext.selectedTrackId,
+        selectedSceneId: scene?.id ?? liveContext.selectedSceneId,
+        selectedClipId: liveContext.selectedClipId,
+      };
+    }
+
+    if (targetKind === "track") {
+      const track = this.getSelectedTrack();
+      return {
+        selectedTrackId: track?.id ?? liveContext.selectedTrackId,
+        selectedSceneId: liveContext.selectedSceneId,
+        selectedClipId: liveContext.selectedClipId,
+      };
+    }
+
+    return liveContext;
   }
 
   private currentGridTargetKind(): "track" | "clip" | "scene" | "scene_action" {

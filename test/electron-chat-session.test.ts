@@ -79,6 +79,68 @@ test("electron chat session supports freeform prompts while guided options stay 
   assert.equal(snapshot.promptState.options.length > 0, true);
 });
 
+test("electron chat session forwards Live selection context to prompt commands", async () => {
+  const observed: { selectedTrackId?: string; selectedClipId?: string }[] = [];
+  const service = {
+    getState: async () => ({
+      transport: { isPlaying: false, bpm: 124, signatureNumerator: 4, signatureDenominator: 4 },
+      tracks: {
+        track_1: {
+          id: "track_1",
+          index: 0,
+          name: "Bass",
+          kind: "midi" as const,
+          devices: [],
+          clips: {
+            clip_0: {
+              id: "clip_0",
+              index: 0,
+              bars: 4,
+              lengthBeats: 16,
+              notes: [],
+              cc: [],
+            },
+          },
+          clipOrder: ["clip_0"],
+        },
+      },
+      trackOrder: ["track_1"],
+      scenes: { scene_1: { id: "scene_1", index: 0, name: "Scene 1" } },
+      sceneOrder: ["scene_1"],
+      refreshedAt: new Date().toISOString(),
+      selectedTrackId: "track_1",
+      selectedClipId: "clip_0",
+    }),
+    refreshState: async () => { throw new Error("not used"); },
+    submitPrompt: async (_input: string, context: { selectedTrackId?: string; selectedClipId?: string }) => {
+      observed.push(context);
+      return { message: "ok" };
+    },
+    undoLast: async () => ({ message: "ok", operationId: "x" }),
+    redoLast: async () => ({ message: "ok", operationId: "x" }),
+    getResourceCatalog: async () => [],
+    describeConnection: () => "mock",
+    subscribe: () => () => {},
+    applyOperation: async () => ({ message: "ok", operationId: "x" }),
+    previewOperation: async () => "preview",
+    fireClip: async () => ({ message: "ok", operationId: "x" }),
+    fireScene: async () => ({ message: "ok", operationId: "x" }),
+    startPlayback: async () => ({ message: "ok", operationId: "x" }),
+    stopPlayback: async () => ({ message: "ok", operationId: "x" }),
+    setTempo: async () => ({ message: "ok", operationId: "x" }),
+  } as any;
+  const session = new ElectronChatSession(service);
+
+  await session.bootstrap("local:mock");
+  await session.submitFreeform("analyze clip", "local:mock");
+
+  assert.deepEqual(observed[0], {
+    selectedTrackId: "track_1",
+    selectedSceneId: undefined,
+    selectedClipId: "clip_0",
+  });
+});
+
 test("electron chat session can advance through natural language", async () => {
   const session = new ElectronChatSession(new LocalWizardCompanionService(new WizardMcpServer()));
 
