@@ -3,6 +3,7 @@
 ## Canonical Status
 - This file is the canonical project context for Codex runtime.
 - Previous repository context is archived as non-canonical reference in `reference/previous-interpretation/`.
+- Ongoing context must be persisted in repository files only. External runtime memory files such as `.claude` project memory are non-canonical and should not be relied on between sessions.
 
 ## General Idea
 Build an agentic copilot for Ableton Live that lets the user control production workflows with:
@@ -43,6 +44,7 @@ Build an agentic copilot for Ableton Live that lets the user control production 
 - Default track creation now tries to insert after the currently selected Live track when no explicit index is provided, to better mirror manual track creation behavior.
 - The fixed guided House starter now uses `A Soft Chord.adv` for the `Chords` track preset.
 - A first resource catalog now exists in code for reusable patterns, scene skeletons, and compound bundles for `House` and `Drum n bass`.
+- The next musical-copilot spike narrows active composition work to `House` only, while keeping `Drum n bass` as an existing guided demo/reference path.
 
 The product is intentionally split in three MVPs:
 - MVP1: Control normal MIDI tracks, assign stock instruments, and create basic Session clips during playback.
@@ -53,6 +55,7 @@ The product is intentionally split in three MVPs:
 - V1: TUI foundation. Status: done.
 - V2: tracks + clips creation with fixed resources. Status: done for MVP1 scope.
 - V3: guided scene builder with fixed `House` and `Drum n bass` trees, startup suggestions, and complete demo-track UX. Status: reached first end-to-end full-track demo milestone; now moving toward resource-first guidance and sidebar-style UX.
+- V3.5: descriptor-driven `House` copilot with short prompt guidance, curated corpus retrieval/ranking, and a product-facing request guide.
 - V4: stock-device sound shaping and fixed sonic adjustments.
 - V5: external plugin support.
 - Possible V3 extension: groovebox/song-mode style scene loop counts before scene transitions.
@@ -90,6 +93,9 @@ The product is intentionally split in three MVPs:
 - Fixed guided demo builders for `House` and `Drum n bass`, using stock instruments, fixed patterns, and fixed scenes.
 - Current guided drum implementation uses separate `Kick`, `Snare`, and `Hats` tracks and reuses the first empty MIDI track when possible.
 - Current guided material is fully programmatic. No LLM inference is used for fixed starters, scene filling, or pattern generation in MVP1.
+- Descriptor-driven prompt layer for `track`, `clip`, and later `scene` refinement, starting with `House`.
+- Product-facing `docs/user-guide.md` with supported requests, examples, and reformulation guidance.
+- Future parameter control layer for stock instruments, macro moves, and later MIDI CC/automation-aware edits.
 
 ## Decisions Made (Research + Setup)
 - Date: 2026-03-06.
@@ -123,6 +129,14 @@ The product is intentionally split in three MVPs:
 - Guided composition direction updated:
 - Move from tree-first to resource-first guidance.
 - Save ecosystem research in `research/*.md` plus `research/ecosystem-watchlist.md`.
+- Date: 2026-03-10.
+- Product direction updated:
+- Persist ongoing context in repo files only (`AGENTS.md`, `planning.md`, `journal.md`, `docs/`, `research/`).
+- Narrow the next musical-copilot spike to `House` only for tighter curation and evaluation.
+- Use short, one-intent prompts plus guided rewrite suggestions instead of opening broad freeform composition chat.
+- Treat `RAG` in this phase as curated corpus retrieval/ranking over musical assets, not model fine-tuning.
+- Defer `RL` until prompt, selection, undo, and retry logs exist to train against.
+- Add `docs/user-guide.md` as a product-facing contract for what the user can ask.
 
 ## Pending Decisions
 - Exact operation schema for `preview -> apply -> undo`.
@@ -135,6 +149,9 @@ The product is intentionally split in three MVPs:
 - Awareness model split: how much suggestion logic should come from low-latency app-session state versus explicit `Pull from Live` reconciliation with the real Ableton set.
 - How far the new scope model should go beyond `One part`, `Loop starter`, and `Song sketch`, and whether the TUI fallback should mirror the companion flow exactly.
 - Scope and coverage semantics for guided steps: how single-role sketches, multi-scene sketches, and full-track growth should differ in scene population and completion rules.
+- Final descriptor schema and ranking rules for terms such as `rigid`, `loose`, `dark`, `minimal`, and `frenetic`.
+- Exact ingestion path and licensing boundaries for the first external House MIDI pack(s).
+- When to add `Techno` as the second descriptor-aware genre after the `House` spike stabilizes.
 
 ## Tech Stack (Planned)
 - Language: TypeScript (Node.js 22+).
@@ -152,7 +169,9 @@ The product is intentionally split in three MVPs:
 - `AGENTS.md` canonical context.
 - `journal.md` origin + major decisions.
 - `planning.md` execution roadmap.
+- `docs/user-guide.md` product-facing request guide and reformulation rules.
 - `docs/local-installation.md` machine-specific install paths and reinstall notes.
+- `research/musical-copilot-direction-2026-03-10.md` consolidated direction for descriptor-driven composition work.
 - `research/` research artifacts, teardowns, and ecosystem watchlist.
 - `reference/previous-interpretation/` archived non-canonical material.
 
@@ -184,6 +203,7 @@ The product is intentionally split in three MVPs:
 - Log each applied operation with timestamp, target object, and diff summary.
 - Keep initial orchestration deterministic where possible (seeded generation for reproducibility).
 - Prefer explicit genre/key/energy inputs over hidden defaults.
+- Composition-oriented prompts should target one intent at a time. If a prompt mixes multiple musical changes, prefer reformulation guidance over guessing and mutating Live.
 
 ## Safe Apply Policy
 - Stages: `plan`, `preview`, `apply`, `undo`.
@@ -209,7 +229,8 @@ The product is intentionally split in three MVPs:
 - The packaged macOS app is local and unsigned; signing and notarization are not part of the current phase.
 - The Electron companion now treats guided suggestions as chat content rather than a separate control pane.
 - Freeform natural-language input is currently limited to guided-tree actions and reset/restart phrases. Open-ended composition chat still needs a broader planner/parser layer.
+- Descriptor-driven composition requests, stock-device parameter edits, and MIDI CC automation remain planned work rather than shipped behavior.
 
 ## Runtime
 - Runtime target: `codex`.
-- Active phase: `electron-companion-implementation`.
+- Active phase: `descriptor-house-copilot`.

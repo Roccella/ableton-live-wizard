@@ -39,6 +39,17 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Remaining focus: improve decision-tree UX, contextual suggestions, pattern quality, preset quality, scene/application logic, and the future planner layer for broader natural-language composition requests.
 - Status: in progress, with first usable end-to-end demo milestone reached and current Electron companion stability back above the experimentation threshold.
 
+### V3.5 - Descriptor-Driven House Copilot
+- Narrow the next musical-quality spike to `House` only while keeping the existing `Drum n bass` path as a regression/demo flow.
+- Introduce a composition prompt contract: short freeform prompts are allowed, but each prompt should target one intent and multi-intent requests are reformulated instead of applied.
+- Add a product-facing request guide in `docs/user-guide.md`.
+- Introduce a first descriptor layer for `track` and `clip` requests, starting with `dark/bright`, `sad/happy`, `rigid/loose`, `minimal/dense`, `calm/frenetic`, and `soft/aggressive`.
+- Build a curated `House` corpus from included Ableton packs plus one medium external MIDI pack.
+- Treat `RAG` here as retrieval and ranking over curated MIDI clips, patterns, and bundles.
+- Defer `RL` until prompt, candidate, undo, retry, and acceptance logs exist to learn from.
+- Keep `scene` descriptors, `loop -> sections`, stock-device parameter moves, and MIDI CC automation as follow-on slices after the first ranking path feels stable.
+- Status: next active phase.
+
 ### V4 - Richer Clip Manipulation And Editing
 - Move from fixed test clips to more musical clip generation/manipulation.
 - Add more guided composition steps and pattern variation.
@@ -60,6 +71,8 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Producer makes a manual change in Live, then asks the agent for another action without losing sync.
 - Producer starts the companion, chooses a scope, genre, and tonal context, then walks the fixed tree until a multi-scene demo exists.
 - Producer uses scenes as arrangement primitives before any true Arrangement View workflow exists.
+- Producer asks for a `House` bassline that is darker, more rigid, or more minimal and gets a ranked, reusable musical option instead of raw generation from scratch.
+- Producer tries a longer mixed request and gets a short rewrite suggestion plus examples instead of a risky best-guess mutation.
 
 ## Technical Plan
 - Use TypeScript/Node for CLI and bridge modules.
@@ -67,6 +80,10 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Add operation planner with deterministic diff summary and state refresh per command.
 - Use a curated stock-instrument role catalog with browser-path/keyword search.
 - Add fixed starter workflows as explicit libraries before any data-driven genre database exists.
+- Add a descriptor schema plus prompt normalizer/reformulator for composition chat.
+- Ingest a curated `House` corpus with metadata for role, BPM, key, tags, and descriptor hints.
+- Rank and retrieve reusable MIDI/bundle assets before any raw generation path is widened.
+- Log prompt, reformulation, ranked candidates, chosen asset, undo, and retry to support later ranking improvements.
 
 ## Acceptance Criteria
 - Reproducible demo on macOS + Live 12.3.2+ with playback running.
@@ -75,3 +92,5 @@ The goal is an agentic workflow that keeps the user in creative flow while prese
 - Agent startup can guide the user into at least one full fixed-genre demo flow.
 - Manual edits in Live do not break the next command because state is refreshed first.
 - Current acceptance checkpoint achieved: the user can reach a very basic complete track structure from the single-terminal interface without leaving the guided flow.
+- New near-term acceptance target: a short `House` prompt such as `darker bass`, `more rigid lead`, or `more minimal hats` maps to descriptor-aware retrieval without silently applying multi-intent guesses.
+- New near-term acceptance target: `docs/user-guide.md` matches the request surface the product actually supports.

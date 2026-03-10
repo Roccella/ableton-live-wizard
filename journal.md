@@ -260,6 +260,23 @@ Outcome:
 - The user reported that the Electron companion no longer reproduced the recent crash path in current guided tests.
 - The chat surface is now denser and less noisy, and the companion reached a first stable checkpoint for continuing product work in a later session.
 
+### 2026-03-10 - Narrow the next musical-copilot spike to House descriptors and repo-only context
+Context:
+- The control layer and guided demo flows are now stable enough that the next main risk is musical quality and prompt UX rather than raw Live control.
+- The user wants future sessions to resume from repository files alone, without depending on external `.claude` project memory.
+- The repo still contains two guided genre demos, but expanding descriptor work across both immediately would dilute curation, ranking, and prompt-design effort.
+Decision:
+- Treat `AGENTS.md`, `planning.md`, `journal.md`, `docs/`, and `research/` as the only canonical persistent context for the project.
+- Keep `Drum n bass` in the repo as an existing regression/demo flow, but narrow the next musical-copilot spike to `House` only.
+- Add a product-facing `docs/user-guide.md` that lists supported requests, examples, invalid prompt patterns, and reformulation guidance.
+- Adopt a `one intent per prompt` rule for composition chat and return rewrite suggestions when the request mixes multiple changes.
+- Treat `RAG` in this phase as retrieval and ranking over a curated `House` corpus rather than as broad text-to-MIDI generation.
+- Defer `RL` until the app is logging prompt reformulations, candidate ranking, selections, undo, and retry behavior reliably enough to learn from.
+Outcome:
+- The next implementation phase now has a narrower musical scope and a clearer evaluation loop.
+- Future sessions can resume from versioned project files alone instead of relying on external runtime memory.
+- The roadmap now has an explicit bridge between the current fixed guided demo and later parameter/automation work.
+
 ## Milestones
 
 ### M0 - Research + Setup Complete
@@ -282,6 +299,11 @@ Outcome:
 - One guided `house` path creates a full fixed demo across multiple scenes.
 - Disabled options remain visible as roadmap placeholders.
 - Milestone status: first end-to-end full-track demo achieved for constrained guided flows (`House` and `Drum n bass`), but still needs UX and content refinement.
+
+### M3.5 - Descriptor-Driven House Copilot
+- `House`-only corpus and descriptor work for the next musical-quality spike.
+- Product-facing request guide and prompt reformulation rules.
+- Retrieval/ranking over reusable musical assets before any broader freeform composition layer.
 
 ### M4 - Sound Shaping
 - Stock-device sound design and mixing moves.

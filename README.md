@@ -8,6 +8,11 @@ The current scope is still MVP1:
 - guided `House` and `Drum n bass` starters
 - preview/apply/undo-friendly mutations
 
+Near-term product focus:
+- descriptor-driven `House` copilot
+- one-intent composition prompts with guided rewrites
+- curated musical asset retrieval before broader freeform composition chat
+
 The main architectural shift in this revision is:
 - the TUI can run local-first in one process for the lowest-friction operator path
 - the daemon still exists as an optional local transport layer for future clients
@@ -171,6 +176,8 @@ The legacy TUI remains in the repo for fallback testing, but it is no longer the
 - `pattern <name> [bars]`
 - `b`, `l`, `p`, `d`
 
+Product-facing request guidance now lives in [user-guide.md](/Users/iwa/repos/ableton-live-wizard/docs/user-guide.md).
+
 ## Resource-first direction
 The repo now includes an initial resource catalog in code for:
 - reusable patterns
@@ -186,6 +193,7 @@ Research and future watch items are saved in:
 - [ableton-mcp-teardown.md](/Users/iwa/repos/ableton-live-wizard/research/ableton-mcp-teardown.md)
 - [guided-suggestions-and-musical-libraries.md](/Users/iwa/repos/ableton-live-wizard/research/guided-suggestions-and-musical-libraries.md)
 - [ecosystem-watchlist.md](/Users/iwa/repos/ableton-live-wizard/research/ecosystem-watchlist.md)
+- [musical-copilot-direction-2026-03-10.md](/Users/iwa/repos/ableton-live-wizard/research/musical-copilot-direction-2026-03-10.md)
 
 ## Current limitations
 - Session View remains the operative clip surface.
