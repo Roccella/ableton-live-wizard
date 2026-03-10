@@ -16,17 +16,19 @@ import {
   FireScenePayload,
   FireClipPayload,
   LiveState,
+  MidiNote,
   OperationPlan,
   OperationResult,
   PlaybackPayload,
   RenameScenePayload,
   RenameTrackPayload,
+  RewriteClipPayload,
   SelectInstrumentPayload,
   TempoPayload,
   Track,
   WriteBasicNotesPayload,
 } from "../types.js";
-import { debugLog, nowIso } from "../util.js";
+import { debugLog, nowIso, stableHash } from "../util.js";
 import { LiveBridge } from "./types.js";
 
 interface TcpBridgeConfig {
@@ -109,6 +111,12 @@ type FullStateResponse = {
         name?: string;
         length?: number;
         is_playing?: boolean;
+        notes?: Array<{
+          pitch?: number;
+          start_time?: number;
+          duration?: number;
+          velocity?: number;
+        }>;
       };
     }>;
   }>;
@@ -117,6 +125,17 @@ type FullStateResponse = {
     name: string;
     is_triggered?: boolean;
   }>;
+  selected_track_index?: number;
+  selected_scene_index?: number;
+  selected_clip_track_index?: number;
+  selected_clip_index?: number;
+};
+
+type TcpClipNote = {
+  pitch?: number;
+  start_time?: number;
+  duration?: number;
+  velocity?: number;
 };
 
 const toDeviceType = (value?: string): DeviceType => {
@@ -165,6 +184,7 @@ export class TcpLiveBridge implements LiveBridge {
           .map((slot) => {
             const clipId = `clip_${slot.index}`;
             const lengthBeats = Number(slot.clip?.length ?? 0);
+            const notes = this.fromLiveNotes(slot.clip?.notes);
             const bars = this.toBars(
               lengthBeats,
               Number(session.signature_numerator ?? 4),
@@ -179,9 +199,10 @@ export class TcpLiveBridge implements LiveBridge {
                 bars,
                 lengthBeats,
                 name: slot.clip?.name ?? clipId,
-                notes: [],
+                notes,
                 cc: [],
                 isPlaying: slot.clip?.is_playing ?? false,
+                noteHash: stableHash({ bars, lengthBeats, notes }),
               },
             ];
           }),
@@ -219,7 +240,14 @@ export class TcpLiveBridge implements LiveBridge {
       (left, right) => scenes[left].index - scenes[right].index,
     );
 
-    return {
+    const selectedTrackId =
+      typeof session.selected_track_index === "number" ? `track_${session.selected_track_index + 1}` : undefined;
+    const selectedSceneId =
+      typeof session.selected_scene_index === "number" ? `scene_${session.selected_scene_index + 1}` : undefined;
+    const selectedClipId =
+      typeof session.selected_clip_index === "number" ? `clip_${session.selected_clip_index}` : undefined;
+
+    const state: LiveState = {
       transport: {
         isPlaying: Boolean(session.is_playing ?? false),
         bpm: Number(session.tempo ?? 120),
@@ -231,7 +259,43 @@ export class TcpLiveBridge implements LiveBridge {
       scenes,
       sceneOrder,
       refreshedAt: nowIso(),
+      selectedTrackId,
+      selectedSceneId,
+      selectedClipId:
+        typeof session.selected_clip_track_index === "number" &&
+        typeof session.selected_clip_index === "number"
+          ? selectedClipId
+          : undefined,
     };
+
+    state.stateHash = stableHash({
+      transport: state.transport,
+      tracks: state.trackOrder.map((trackId) => {
+        const track = state.tracks[trackId];
+        return {
+          id: track.id,
+          name: track.name,
+          kind: track.kind,
+          instrument: track.instrument,
+          clipOrder: track.clipOrder.map((clipId) => {
+            const clip = track.clips[clipId];
+            return {
+              id: clip.id,
+              bars: clip.bars,
+              lengthBeats: clip.lengthBeats,
+              name: clip.name,
+              notes: clip.notes,
+            };
+          }),
+        };
+      }),
+      scenes: state.sceneOrder.map((sceneId) => state.scenes[sceneId]),
+      selectedTrackId: state.selectedTrackId,
+      selectedSceneId: state.selectedSceneId,
+      selectedClipId: state.selectedClipId,
+    });
+
+    return state;
   }
 
   async previewOperation(plan: OperationPlan): Promise<string> {
@@ -345,6 +409,16 @@ export class TcpLiveBridge implements LiveBridge {
         await this.sendCommand("add_notes_to_clip", {
           track_index: payload.trackIndex,
           clip_index: payload.clipIndex,
+          notes: this.toLiveNotes(payload.notes),
+        });
+        break;
+      }
+      case "rewrite_clip": {
+        const payload = plan.payload as RewriteClipPayload;
+        await this.sendCommand("rewrite_clip_notes", {
+          track_index: payload.trackIndex,
+          clip_index: payload.clipIndex,
+          length: payload.beats,
           notes: this.toLiveNotes(payload.notes),
         });
         break;
@@ -749,6 +823,30 @@ export class TcpLiveBridge implements LiveBridge {
       velocity: note.velocity,
       mute: false,
     }));
+  }
+
+  private fromLiveNotes(notes?: TcpClipNote[]): MidiNote[] {
+    if (!notes) {
+      return [];
+    }
+
+    return notes
+      .map((note) => {
+        const pitch = Number(note.pitch);
+        const start = Number(note.start_time);
+        const duration = Number(note.duration);
+        const velocity = Number(note.velocity);
+        if (![pitch, start, duration, velocity].every(Number.isFinite)) {
+          return undefined;
+        }
+        return {
+          pitch,
+          start,
+          duration,
+          velocity,
+        };
+      })
+      .filter((note): note is MidiNote => Boolean(note));
   }
 
   private toBars(lengthBeats: number, numerator: number, denominator: number): number {

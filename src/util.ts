@@ -17,6 +17,16 @@ export const randomId = (prefix: string): string =>
 export const deepClone = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
+export const stableHash = (value: unknown): string => {
+  const source = typeof value === "string" ? value : JSON.stringify(value);
+  let hash = 2166136261;
+  for (let i = 0; i < source.length; i += 1) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
+
 const debugListeners = new Set<(entry: DebugLogEntry) => void>();
 
 let debugLogDirEnsured = false;

@@ -191,6 +191,37 @@ test("fire_scene marks only the fired scene as triggered", async () => {
   assert.equal(state.scenes["scene_3"].isTriggered, false);
 });
 
+test("rewrite_clip replaces notes and updates clip length metadata", async () => {
+  const bridge = makeBridge();
+  await bridge.applyOperation(op("create_midi_clip", {
+    trackId: "track_1",
+    trackIndex: 0,
+    clipId: "clip_0",
+    clipIndex: 0,
+    bars: 4,
+    beats: 16,
+  }));
+
+  await bridge.applyOperation(op("rewrite_clip", {
+    trackId: "track_1",
+    trackIndex: 0,
+    clipId: "clip_0",
+    clipIndex: 0,
+    bars: 8,
+    beats: 32,
+    notes: [
+      { pitch: 36, velocity: 92, start: 0, duration: 0.5 },
+      { pitch: 36, velocity: 96, start: 31, duration: 1 },
+    ],
+  }));
+
+  const state = await bridge.getState();
+  assert.equal(state.tracks["track_1"].clips["clip_0"].bars, 8);
+  assert.equal(state.tracks["track_1"].clips["clip_0"].lengthBeats, 32);
+  assert.equal(state.tracks["track_1"].clips["clip_0"].notes.length, 2);
+  assert.ok(state.tracks["track_1"].clips["clip_0"].noteHash);
+});
+
 // --- unsupported operation ---
 
 test("unsupported operation type throws", async () => {

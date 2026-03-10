@@ -230,7 +230,10 @@ The product is intentionally split in three MVPs:
 - The Electron companion now treats guided suggestions as chat content rather than a separate control pane.
 - Freeform natural-language input is currently limited to guided-tree actions and reset/restart phrases. Open-ended composition chat still needs a broader planner/parser layer.
 - Descriptor-driven composition requests, stock-device parameter edits, and MIDI CC automation remain planned work rather than shipped behavior.
+- The bridge now reads MIDI notes from Session clips in the project-owned Remote Script path and exposes a cheap state hash plus selected-track/clip context in app state.
+- A first musical-quality workflow now exists for exact prompt commands on the selected clip: `analyze clip` plus deterministic `vary clip resolve|question|mini_roll`.
+- The first shipped variation slice is intentionally narrow: it targets existing 4-bar MIDI clips, optimized for `House` bass-first trials, and rewrites them into 8-bar variations.
 
 ## Runtime
 - Runtime target: `codex`.
-- Active phase: `descriptor-house-copilot`.
+- Active phase: `house-bass-variation-copilot`.

@@ -1,5 +1,5 @@
 import { LiveState, OperationPlan, OperationResult, UndoToken } from "../types.js";
-import { nowIso } from "../util.js";
+import { nowIso, stableHash } from "../util.js";
 import { LiveBridge } from "./types.js";
 
 interface RealBridgeConfig {
@@ -14,6 +14,10 @@ interface BackendStateResponse {
   scenes?: LiveState["scenes"];
   sceneOrder?: LiveState["sceneOrder"];
   refreshedAt?: string;
+  selectedTrackId?: string;
+  selectedSceneId?: string;
+  selectedClipId?: string;
+  stateHash?: string;
 }
 
 interface BackendApplyResponse {
@@ -40,14 +44,31 @@ export class RealLiveBridge implements LiveBridge {
 
   async getState(): Promise<LiveState> {
     const data = await this.requestJson<BackendStateResponse>("GET", "/state");
-    return {
+    const state: LiveState = {
       transport: data.transport,
       tracks: data.tracks,
       trackOrder: data.trackOrder ?? Object.keys(data.tracks),
       scenes: data.scenes ?? {},
       sceneOrder: data.sceneOrder ?? Object.keys(data.scenes ?? {}),
       refreshedAt: data.refreshedAt ?? nowIso(),
+      selectedTrackId: data.selectedTrackId,
+      selectedSceneId: data.selectedSceneId,
+      selectedClipId: data.selectedClipId,
+      stateHash: data.stateHash,
     };
+
+    if (!state.stateHash) {
+      state.stateHash = stableHash({
+        transport: state.transport,
+        tracks: state.trackOrder.map((trackId) => state.tracks[trackId]),
+        scenes: state.sceneOrder.map((sceneId) => state.scenes[sceneId]),
+        selectedTrackId: state.selectedTrackId,
+        selectedSceneId: state.selectedSceneId,
+        selectedClipId: state.selectedClipId,
+      });
+    }
+
+    return state;
   }
 
   async previewOperation(plan: OperationPlan): Promise<string> {

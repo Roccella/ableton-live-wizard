@@ -1,4 +1,6 @@
 import { BASIC_PATTERN_NAMES } from "../music/basic-patterns.js";
+import { analyzeMidiClip, formatMidiClipAnalysis } from "../music/clip-analysis.js";
+import { createClipVariation, isClipVariationIntent } from "../music/clip-variation.js";
 import { BasicPatternName, LiveState, Track } from "../types.js";
 import {
   PromptContext,
@@ -38,6 +40,14 @@ const requireSceneIndex = (state: LiveState, sceneId?: string): number => {
   return scene.index;
 };
 
+const requireClip = (track: Track, clipId: string) => {
+  const clip = track.clips[clipId];
+  if (!clip) {
+    throw new Error(`Selected clip no longer exists: ${track.id}/${clipId}`);
+  }
+  return clip;
+};
+
 const selectedClipId = (state: LiveState, context: PromptContext): string => {
   if (context.selectedClipId) {
     return context.selectedClipId;
@@ -66,12 +76,22 @@ export const executePromptCommand = async (
   if (input === "help") {
     return {
       message:
-        "Commands: suggest, play, stop, undo, redo, tempo <n|+|->, scene play, clip play, create track [name], create scene [name], delete track, delete clip, delete scene, instrument <role|query>, create clip [bars], pattern <name> [bars], b/l/p/d.",
+        "Commands: suggest, play, stop, undo, redo, refresh, tempo <n|+|->, scene play, clip play, analyze clip, vary clip <resolve|question|mini_roll>, create track [name], create scene [name], delete track, delete clip, delete scene, instrument <role|query>, create clip [bars], pattern <name> [bars], b/l/p/d.",
     };
   }
 
   if (input === "refresh") {
-    await controller.refreshState();
+    const refreshed = await controller.refreshState();
+    if (context.selectedTrackId && context.selectedClipId) {
+      const selectedTrack = refreshed.tracks[context.selectedTrackId];
+      const selectedClip = selectedTrack?.clips[context.selectedClipId];
+      if (!selectedTrack || !selectedClip) {
+        return { message: "State refreshed. The selected clip no longer exists." };
+      }
+      return {
+        message: `State refreshed. Selected clip is ${selectedClip.bars} bars with ${selectedClip.notes.length} notes.`,
+      };
+    }
     return { message: "State refreshed" };
   }
 
@@ -249,6 +269,37 @@ export const executePromptCommand = async (
           bars,
         })
       ).message,
+    };
+  }
+
+  if (input === "analyze clip") {
+    const selectedTrack = requireTrack(state, context.selectedTrackId);
+    const clip = requireClip(selectedTrack, selectedClipId(state, context));
+    const analysis = analyzeMidiClip(clip);
+    return {
+      message: `Analyzed ${selectedTrack.name} / ${clip.name ?? clip.id}. ${formatMidiClipAnalysis(analysis)}`,
+    };
+  }
+
+  if (rawInput.startsWith("vary clip ")) {
+    const intent = rawInput.slice("vary clip ".length).trim().toLowerCase();
+    if (!isClipVariationIntent(intent)) {
+      throw new Error(`Unknown clip variation intent: ${intent}`);
+    }
+
+    const selectedTrack = requireTrack(state, context.selectedTrackId);
+    const clipId = selectedClipId(state, context);
+    const clip = requireClip(selectedTrack, clipId);
+    const variation = createClipVariation(clip, intent);
+    const result = await controller.applyOperation("rewrite_clip", {
+      trackRef: selectedTrack.id,
+      clipRef: clipId,
+      bars: variation.bars,
+      notes: variation.notes,
+    });
+
+    return {
+      message: `${variation.summary} ${result.message}`,
     };
   }
 

@@ -277,6 +277,23 @@ Outcome:
 - Future sessions can resume from versioned project files alone instead of relying on external runtime memory.
 - The roadmap now has an explicit bridge between the current fixed guided demo and later parameter/automation work.
 
+### 2026-03-10 - Ship the first selected-clip musical workflow
+Context:
+- Follow-up product thinking shifted the near-term target away from broad descriptor chat and toward a narrower "read an existing clip, comment on it, and vary it with intent" workflow.
+- The repo could refresh track and scene state, but it could not yet read real MIDI note data from Live Session clips, so musical analysis of an existing loop was mostly impossible.
+Decision:
+- Extend the project-owned Remote Script and TCP bridge so `get_full_state` now includes MIDI note payloads for clips plus selected-track/scene/clip context.
+- Add a cheap app-level state hash and clip note hash so the UI/runtime can reason about drift and selected-clip status without a broad architecture rewrite first.
+- Ship the first narrow musical copilot slice as exact prompt commands on the selected clip:
+  - `analyze clip`
+  - `vary clip resolve`
+  - `vary clip question`
+  - `vary clip mini_roll`
+- Keep the variation path deterministic and intentionally narrow: selected existing `4-bar -> 8-bar` MIDI clips, optimized first for `House` bass-first trials.
+Outcome:
+- The product can now read real clip notes, summarize a selected clip, and rewrite a selected 4-bar clip into an 8-bar variation with a clear ending intent.
+- The bridge/runtime gap for "work from what is already in Live" is smaller now, even though broader scene/song reasoning is still future work.
+
 ## Milestones
 
 ### M0 - Research + Setup Complete
@@ -304,6 +321,7 @@ Outcome:
 - `House`-only corpus and descriptor work for the next musical-quality spike.
 - Product-facing request guide and prompt reformulation rules.
 - Retrieval/ranking over reusable musical assets before any broader freeform composition layer.
+- First shipped selected-clip variation slice for exact prompt commands.
 
 ### M4 - Sound Shaping
 - Stock-device sound design and mixing moves.

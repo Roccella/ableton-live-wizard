@@ -23,6 +23,7 @@ import {
   PlaybackPayload,
   RenameScenePayload,
   RenameTrackPayload,
+  RewriteClipPayload,
   SelectInstrumentPayload,
   TempoPayload,
   Track,
@@ -374,6 +375,30 @@ export class WizardMcpServer implements WizardSessionController {
           target: `${track.id}/clip_${clipIndex}`,
           payload: editPayload,
           previewSummary: `Write ${p.notes.length} note events in ${track.name} slot ${clipIndex}`,
+          riskLevel: "medium",
+          generatedAt: nowIso(),
+        };
+      }
+      case "rewrite_clip": {
+        const p = payload as { trackRef: string; clipRef: string; bars: number; notes: RewriteClipPayload["notes"] };
+        const track = parseTrackRef(state, p.trackRef);
+        const clipIndex = parseClipRef(p.clipRef);
+        const rewritePayload: RewriteClipPayload = {
+          trackId: track.id,
+          trackIndex: track.index,
+          clipId: `clip_${clipIndex}`,
+          clipIndex,
+          bars: p.bars,
+          beats: p.bars * beatsPerBar(state),
+          notes: p.notes,
+        };
+        return {
+          id: randomId("op"),
+          type,
+          intent: "Rewrite MIDI clip and length",
+          target: `${track.id}/clip_${clipIndex}`,
+          payload: rewritePayload,
+          previewSummary: `Rewrite ${track.name} slot ${clipIndex} to ${p.bars} bars with ${p.notes.length} notes`,
           riskLevel: "medium",
           generatedAt: nowIso(),
         };

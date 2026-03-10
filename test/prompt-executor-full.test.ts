@@ -304,6 +304,80 @@ test("pattern writes notes to clip", async () => {
   assert.ok(result.message);
 });
 
+test("analyze clip summarizes the selected clip", async () => {
+  const ctrl = makeController();
+  await ctrl.applyOperation("create_midi_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    bars: 4,
+  });
+  await ctrl.applyOperation("edit_notes", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    notes: [
+      { pitch: 36, velocity: 90, start: 0, duration: 0.5 },
+      { pitch: 36, velocity: 88, start: 4, duration: 0.5 },
+      { pitch: 36, velocity: 92, start: 15, duration: 1 },
+    ],
+  });
+
+  const result = await executePromptCommand(ctrl, "analyze clip", {
+    selectedTrackId: "track_1",
+    selectedClipId: "clip_0",
+  });
+
+  assert.ok(result.message.includes("Analyzed"));
+  assert.ok(result.message.includes("root C"));
+});
+
+test("vary clip resolve rewrites a 4-bar clip into 8 bars", async () => {
+  const ctrl = makeController();
+  await ctrl.applyOperation("create_midi_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    bars: 4,
+  });
+  await ctrl.applyOperation("edit_notes", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    notes: [
+      { pitch: 36, velocity: 90, start: 0, duration: 0.5 },
+      { pitch: 43, velocity: 84, start: 6, duration: 0.5 },
+      { pitch: 36, velocity: 92, start: 15, duration: 0.5 },
+    ],
+  });
+
+  const result = await executePromptCommand(ctrl, "vary clip resolve", {
+    selectedTrackId: "track_1",
+    selectedClipId: "clip_0",
+  });
+  assert.ok(result.message.includes("Extended the clip to 8 bars"));
+
+  const state = await ctrl.getState(true);
+  assert.equal(state.tracks["track_1"].clips["clip_0"].bars, 8);
+  assert.ok(state.tracks["track_1"].clips["clip_0"].notes.length > 3);
+});
+
+test("refresh reports when the selected clip no longer exists", async () => {
+  const ctrl = makeController();
+  await ctrl.applyOperation("create_midi_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    bars: 4,
+  });
+  await ctrl.applyOperation("delete_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+  });
+
+  const result = await executePromptCommand(ctrl, "refresh", {
+    selectedTrackId: "track_1",
+    selectedClipId: "clip_0",
+  });
+
+  assert.ok(result.message.includes("no longer exists"));
+});
+
 // --- error paths ---
 
 test("unknown command throws", async () => {
@@ -335,6 +409,23 @@ test("pattern with unknown name throws", async () => {
       selectedSceneId: "scene_1",
     }),
     /Unknown pattern/,
+  );
+});
+
+test("vary clip rejects unknown intents", async () => {
+  const ctrl = makeController();
+  await ctrl.applyOperation("create_midi_clip", {
+    trackRef: "track_1",
+    clipRef: "clip_0",
+    bars: 4,
+  });
+
+  await assert.rejects(
+    () => executePromptCommand(ctrl, "vary clip explode", {
+      selectedTrackId: "track_1",
+      selectedClipId: "clip_0",
+    }),
+    /Unknown clip variation intent/,
   );
 });
 

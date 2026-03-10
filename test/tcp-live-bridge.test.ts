@@ -35,12 +35,24 @@ test("tcp bridge getState maps device types and clip bars from the TCP payload",
                 name: "Hook",
                 length: 6,
                 is_playing: true,
+                notes: [
+                  {
+                    pitch: 36,
+                    start_time: 0,
+                    duration: 0.5,
+                    velocity: 92,
+                  },
+                ],
               },
             },
           ],
         },
       ],
       scenes: [{ index: 0, name: "Intro", is_triggered: false }],
+      selected_track_index: 0,
+      selected_scene_index: 0,
+      selected_clip_track_index: 0,
+      selected_clip_index: 0,
     };
   };
 
@@ -55,6 +67,11 @@ test("tcp bridge getState maps device types and clip bars from the TCP payload",
   );
   assert.equal(state.tracks.track_1.clips.clip_0.bars, 2);
   assert.equal(state.tracks.track_1.clips.clip_0.isPlaying, true);
+  assert.equal(state.tracks.track_1.clips.clip_0.notes.length, 1);
+  assert.equal(state.selectedTrackId, "track_1");
+  assert.equal(state.selectedSceneId, "scene_1");
+  assert.equal(state.selectedClipId, "clip_0");
+  assert.ok(state.stateHash);
   assert.deepEqual(state.sceneOrder, ["scene_1"]);
 });
 

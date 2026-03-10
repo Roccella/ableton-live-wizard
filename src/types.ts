@@ -49,6 +49,7 @@ export interface MidiClip {
   notes: MidiNote[];
   cc: MidiCCPoint[];
   isPlaying?: boolean;
+  noteHash?: string;
 }
 
 export interface DeviceSummary {
@@ -91,6 +92,10 @@ export interface LiveState {
   scenes: Record<string, Scene>;
   sceneOrder: string[];
   refreshedAt: string;
+  selectedTrackId?: string;
+  selectedSceneId?: string;
+  selectedClipId?: string;
+  stateHash?: string;
 }
 
 export type OperationType =
@@ -108,6 +113,7 @@ export type OperationType =
   | "create_midi_clip"
   | "delete_clip"
   | "edit_notes"
+  | "rewrite_clip"
   | "write_basic_notes"
   | "apply_cc"
   | "select_instrument";
@@ -198,6 +204,16 @@ export interface EditNotesPayload {
   trackIndex: number;
   clipId: string;
   clipIndex: number;
+  notes: MidiNote[];
+}
+
+export interface RewriteClipPayload {
+  trackId: string;
+  trackIndex: number;
+  clipId: string;
+  clipIndex: number;
+  bars: number;
+  beats: number;
   notes: MidiNote[];
 }
 

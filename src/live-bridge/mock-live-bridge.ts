@@ -15,13 +15,14 @@ import {
   PlaybackPayload,
   RenameScenePayload,
   RenameTrackPayload,
+  RewriteClipPayload,
   SelectInstrumentPayload,
   TempoPayload,
   Track,
   UndoToken,
   WriteBasicNotesPayload,
 } from "../types.js";
-import { deepClone, nowIso } from "../util.js";
+import { deepClone, nowIso, stableHash } from "../util.js";
 import { LiveBridge } from "./types.js";
 
 const createDefaultState = (): LiveState => ({
@@ -76,7 +77,7 @@ export class MockLiveBridge implements LiveBridge {
   }
 
   async getState(): Promise<LiveState> {
-    return deepClone(this.state);
+    return deepClone(this.annotateState(this.state));
   }
 
   async previewOperation(plan: OperationPlan): Promise<string> {
@@ -201,6 +202,14 @@ export class MockLiveBridge implements LiveBridge {
       case "edit_notes": {
         const payload = plan.payload as EditNotesPayload;
         const clip = this.requireClip(payload.trackId, payload.clipId);
+        clip.notes = payload.notes;
+        break;
+      }
+      case "rewrite_clip": {
+        const payload = plan.payload as RewriteClipPayload;
+        const clip = this.requireClip(payload.trackId, payload.clipId);
+        clip.bars = payload.bars;
+        clip.lengthBeats = payload.beats;
         clip.notes = payload.notes;
         break;
       }
@@ -405,6 +414,30 @@ export class MockLiveBridge implements LiveBridge {
 
   private touchState(): void {
     this.state.refreshedAt = nowIso();
+    this.annotateState(this.state);
+  }
+
+  private annotateState(state: LiveState): LiveState {
+    for (const trackId of state.trackOrder) {
+      const track = state.tracks[trackId];
+      for (const clipId of track.clipOrder) {
+        const clip = track.clips[clipId];
+        clip.noteHash = stableHash({
+          bars: clip.bars,
+          lengthBeats: clip.lengthBeats,
+          notes: clip.notes,
+        });
+      }
+    }
+
+    state.stateHash = stableHash({
+      transport: state.transport,
+      tracks: state.trackOrder.map((trackId) => state.tracks[trackId]),
+      scenes: state.sceneOrder.map((sceneId) => state.scenes[sceneId]),
+      selectedTrackId: this.selectedTrackId,
+    });
+    state.selectedTrackId = this.selectedTrackId;
+    return state;
   }
 
   private requireTrack(trackId: string): Track {

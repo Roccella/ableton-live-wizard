@@ -177,6 +177,11 @@ class AbletonMCP(ControlSurface):
             return self._get_session_info()
         if command_type == "get_track_info":
             return self._get_track_info(int(params.get("track_index", 0)))
+        if command_type == "get_clip_notes":
+            return self._get_clip_notes(
+                int(params.get("track_index", 0)),
+                int(params.get("clip_index", 0)),
+            )
         if command_type == "get_browser_items_at_path":
             return self.get_browser_items_at_path(params.get("path", ""))
         raise ValueError("Unknown command: {0}".format(command_type))
@@ -209,6 +214,13 @@ class AbletonMCP(ControlSurface):
             return self._add_notes_to_clip(
                 int(params.get("track_index", 0)),
                 int(params.get("clip_index", 0)),
+                params.get("notes", []),
+            )
+        if command_type == "rewrite_clip_notes":
+            return self._rewrite_clip_notes(
+                int(params.get("track_index", 0)),
+                int(params.get("clip_index", 0)),
+                float(params.get("length", 4.0)),
                 params.get("notes", []),
             )
         if command_type == "fire_clip":
@@ -250,6 +262,10 @@ class AbletonMCP(ControlSurface):
                 }
             )
 
+        selected_track_index = self._get_selected_track_index()
+        selected_scene_index = self._get_selected_scene_index()
+        selected_clip_coords = self._get_highlighted_clip_slot_coords()
+
         return {
             "tempo": self._song.tempo,
             "signature_numerator": self._song.signature_numerator,
@@ -257,6 +273,10 @@ class AbletonMCP(ControlSurface):
             "is_playing": self._song.is_playing,
             "tracks": tracks,
             "scenes": scenes,
+            "selected_track_index": selected_track_index,
+            "selected_scene_index": selected_scene_index,
+            "selected_clip_track_index": selected_clip_coords.get("track_index") if selected_clip_coords else None,
+            "selected_clip_index": selected_clip_coords.get("clip_index") if selected_clip_coords else None,
         }
 
     def _get_session_info(self):
@@ -292,6 +312,7 @@ class AbletonMCP(ControlSurface):
                     "length": slot.clip.length,
                     "is_playing": slot.clip.is_playing,
                     "is_recording": slot.clip.is_recording,
+                    "notes": self._read_clip_notes(slot.clip),
                 }
             clip_slots.append({"index": slot_index, "has_clip": slot.has_clip, "clip": clip_info})
 
@@ -424,6 +445,112 @@ class AbletonMCP(ControlSurface):
 
         clip_slot.clip.set_notes(tuple(live_notes))
         return {"note_count": len(live_notes)}
+
+    def _rewrite_clip_notes(self, track_index, clip_index, length, notes):
+        track = self._require_track(track_index)
+        if clip_index < 0 or clip_index >= len(track.clip_slots):
+            raise IndexError("Clip index out of range")
+
+        clip_slot = track.clip_slots[clip_index]
+        if not clip_slot.has_clip:
+            raise RuntimeError("Clip slot does not contain a clip")
+
+        clip = clip_slot.clip
+        try:
+            clip.loop_end = length
+        except Exception:
+            pass
+        try:
+            clip.end_marker = length
+        except Exception:
+            pass
+        try:
+            clip.remove_notes(0.0, 0, length, 128)
+        except Exception:
+            pass
+
+        live_notes = []
+        for note in notes:
+            live_notes.append(
+                (
+                    int(note.get("pitch", 60)),
+                    float(note.get("start_time", 0.0)),
+                    float(note.get("duration", 0.25)),
+                    int(note.get("velocity", 100)),
+                    bool(note.get("mute", False)),
+                )
+            )
+
+        clip.set_notes(tuple(live_notes))
+        return {"note_count": len(live_notes), "length": length}
+
+    def _get_clip_notes(self, track_index, clip_index):
+        track = self._require_track(track_index)
+        if clip_index < 0 or clip_index >= len(track.clip_slots):
+            raise IndexError("Clip index out of range")
+
+        clip_slot = track.clip_slots[clip_index]
+        if not clip_slot.has_clip:
+            raise RuntimeError("Clip slot does not contain a clip")
+
+        clip = clip_slot.clip
+        return {
+            "name": clip.name,
+            "length": clip.length,
+            "is_playing": clip.is_playing,
+            "notes": self._read_clip_notes(clip),
+        }
+
+    def _read_clip_notes(self, clip):
+        try:
+            if hasattr(clip, "is_midi_clip") and not clip.is_midi_clip:
+                return []
+        except Exception:
+            pass
+
+        length = float(getattr(clip, "length", 0.0))
+        raw_notes = []
+
+        try:
+            raw_notes = clip.get_notes(0.0, 0, length, 128)
+        except Exception:
+            try:
+                raw_notes = clip.get_notes_extended(0.0, 0, length, 128)
+            except Exception:
+                return []
+
+        notes = []
+        for note in raw_notes:
+            normalized = self._normalize_note_tuple(note)
+            if normalized is not None:
+                notes.append(normalized)
+        return notes
+
+    def _normalize_note_tuple(self, note):
+        if isinstance(note, dict):
+            try:
+                return {
+                    "pitch": int(note.get("pitch", 60)),
+                    "start_time": float(note.get("start_time", 0.0)),
+                    "duration": float(note.get("duration", 0.25)),
+                    "velocity": int(note.get("velocity", 100)),
+                }
+            except Exception:
+                return None
+
+        try:
+            pitch = int(note[0])
+            start_time = float(note[1])
+            duration = float(note[2])
+            velocity = int(note[3])
+            return {
+                "pitch": pitch,
+                "start_time": start_time,
+                "duration": duration,
+                "velocity": velocity,
+            }
+        except Exception:
+            return None
 
     def _undo(self):
         if hasattr(self._song, "can_undo") and hasattr(self._song, "undo"):
@@ -591,6 +718,53 @@ class AbletonMCP(ControlSurface):
                 return min(index + 1, len(self._song.tracks))
 
         return -1
+
+    def _get_selected_track_index(self):
+        selected_track = getattr(self._song.view, "selected_track", None)
+        if selected_track is None:
+            return None
+
+        for index, track in enumerate(self._song.tracks):
+            if track == selected_track:
+                return index
+
+        return None
+
+    def _get_selected_scene_index(self):
+        selected_scene = getattr(self._song.view, "selected_scene", None)
+        if selected_scene is None:
+            return None
+
+        for index, scene in enumerate(self._song.scenes):
+            if scene == selected_scene:
+                return index
+
+        return None
+
+    def _get_highlighted_clip_slot_coords(self):
+        clip_slot = getattr(self._song.view, "highlighted_clip_slot", None)
+        if clip_slot is None:
+            return None
+
+        track_index = None
+        clip_index = None
+
+        for current_track_index, track in enumerate(self._song.tracks):
+            for current_clip_index, current_slot in enumerate(track.clip_slots):
+                if current_slot == clip_slot:
+                    track_index = current_track_index
+                    clip_index = current_clip_index
+                    break
+            if track_index is not None:
+                break
+
+        if track_index is None or clip_index is None:
+            return None
+
+        return {
+            "track_index": track_index,
+            "clip_index": clip_index,
+        }
 
     def _require_scene(self, scene_index):
         if scene_index < 0 or scene_index >= len(self._song.scenes):
