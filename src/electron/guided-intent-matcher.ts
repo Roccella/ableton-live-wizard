@@ -1,14 +1,22 @@
 import type { CompanionPromptOption } from "./shared.js";
 import type {
-  GuidedChainId,
-  GuidedContinuationId,
-  GuidedFoundationId,
   GuidedGenreId,
   GuidedScaleMode,
-  GuidedScopeId,
 } from "../workflows/guided-starter.js";
+import type { SceneRoleId } from "../workflows/scene-roles.js";
 
-export type GuidedNaturalMode = "prepare" | "scope" | "genre" | "tonal_context" | "build" | "chain" | "free";
+export type GuidedNaturalMode =
+  | "prepare"
+  | "genre"
+  | "tonal_context"
+  | "import_preview"
+  | "seed_scene"
+  | "scene_hub"
+  | "add_track"
+  | "new_scene"
+  | "confirm_variation"
+  | "track_scenes"
+  | "free";
 
 export type TonalContextToken = {
   key: string;
@@ -19,30 +27,18 @@ export type GuidedIntentResolution = {
   reopenSuggestions?: boolean;
   goBack?: boolean;
   prepareChoice?: "clear" | "keep";
-  scope?: GuidedScopeId;
   genre?: GuidedGenreId;
   tonalContext?: TonalContextToken;
-  foundationStep?: GuidedFoundationId;
-  continuationStep?: GuidedContinuationId;
-  chainPrompt?: boolean;
-  chainChoice?: GuidedChainId;
+  trackId?: string;
+  sceneRole?: SceneRoleId;
+  chainScenes?: boolean;
   confidence: "high" | "low";
   ambiguity?: string;
 };
 
 const STOP_WORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "for",
-  "in",
-  "it",
-  "me",
-  "please",
-  "the",
-  "to",
-  "with",
-  "your",
+  "a", "an", "and", "for", "in", "it", "me",
+  "please", "the", "to", "with", "your",
 ]);
 
 const normalizeText = (value: string): string =>
@@ -65,29 +61,35 @@ const tokenize = (value: string): string[] =>
 const includesPhrase = (input: string, phrases: string[]): boolean =>
   phrases.some((phrase) => input.includes(normalizeText(phrase)));
 
-const detectSingleMatch = <T extends string>(input: string, candidates: Array<{ id: T; phrases: string[] }>): T | undefined => {
-  const matches = candidates.filter((candidate) => includesPhrase(input, candidate.phrases)).map((candidate) => candidate.id);
+const detectSingleMatch = <T extends string>(
+  input: string,
+  candidates: Array<{ id: T; phrases: string[] }>,
+): T | undefined => {
+  const matches = candidates
+    .filter((candidate) => includesPhrase(input, candidate.phrases))
+    .map((candidate) => candidate.id);
   return matches.length === 1 ? matches[0] : undefined;
 };
 
-const FOUNDATION_CANDIDATES: Array<{ id: GuidedFoundationId; phrases: string[] }> = [
-  { id: "drums", phrases: ["drums", "drum groove", "drum pattern", "beat", "rhythm section", "lay down drums"] },
-  { id: "bassline", phrases: ["bassline", "bass line", "bass groove", "sketch bass", "add bass"] },
-  { id: "chords", phrases: ["chords", "chord groove", "chord progression", "harmonic bed", "harmony"] },
-  { id: "pads", phrases: ["pads", "pad bed", "pad layer", "pad sketch"] },
+const TRACK_CANDIDATES: Array<{ id: string; phrases: string[] }> = [
+  { id: "kick", phrases: ["kick", "add kick", "kick drum"] },
+  { id: "snare", phrases: ["snare", "add snare", "snare drum"] },
+  { id: "hats", phrases: ["hats", "hi-hats", "hi hats", "hihat", "add hats"] },
+  { id: "bass", phrases: ["bass", "bassline", "bass line", "add bass"] },
+  { id: "chords", phrases: ["chords", "chord", "harmony", "add chords"] },
+  { id: "lead", phrases: ["lead", "melody", "add lead"] },
+  { id: "pads", phrases: ["pads", "pad", "add pads"] },
 ];
 
-const CONTINUATION_CANDIDATES: Array<{ id: GuidedContinuationId; phrases: string[] }> = [
-  { id: "verse_variation", phrases: ["verse 2 and lead", "verse two and lead", "second verse and lead", "verse variation"] },
-  { id: "build_drop", phrases: ["build up and drop", "build and drop", "build up drop", "build drop"] },
-  { id: "intro_outro", phrases: ["intro and outro", "intro outro", "add intro and outro"] },
-];
-
-const SCOPE_CANDIDATES: Array<{ id: GuidedScopeId; phrases: string[] }> = [
-  { id: "single_scene", phrases: ["single scene", "one scene", "just one scene", "only one scene", "test scene"] },
-  { id: "one_part", phrases: ["one part", "single part", "one element", "single element", "just one part"] },
-  { id: "loop", phrases: ["loop starter", "starter loop", "make a loop", "start a loop", "loop sketch", "loop"] },
-  { id: "song", phrases: ["song sketch", "start a song", "make a song", "full track", "track sketch", "start a track", "make a track", "song"] },
+const SCENE_ROLE_CANDIDATES: Array<{ id: SceneRoleId; phrases: string[] }> = [
+  { id: "verse", phrases: ["verse"] },
+  { id: "chorus", phrases: ["chorus"] },
+  { id: "drop", phrases: ["drop"] },
+  { id: "bridge", phrases: ["bridge"] },
+  { id: "breakdown", phrases: ["breakdown", "break down"] },
+  { id: "build", phrases: ["build", "build up", "buildup"] },
+  { id: "intro", phrases: ["intro", "introduction"] },
+  { id: "outro", phrases: ["outro", "ending"] },
 ];
 
 const GENRE_CANDIDATES: Array<{ id: GuidedGenreId; phrases: string[] }> = [
@@ -97,9 +99,7 @@ const GENRE_CANDIDATES: Array<{ id: GuidedGenreId; phrases: string[] }> = [
 
 const extractTonalContext = (input: string): TonalContextToken | undefined => {
   const match = input.match(/\b([a-g])(?:\s+sharp)?(?:\s|-)+(major|minor)\b/i);
-  if (!match) {
-    return undefined;
-  }
+  if (!match) return undefined;
 
   return {
     key: match[1].toUpperCase(),
@@ -110,21 +110,21 @@ const extractTonalContext = (input: string): TonalContextToken | undefined => {
 const resolveResetChoice = (input: string): "clear" | "keep" | undefined => {
   if (
     includesPhrase(input, [
-      "start over",
-      "from scratch",
-      "restart",
-      "clear the set",
-      "clear current set",
-      "new song",
-      "another track",
-      "start a new track",
-      "new track from scratch",
+      "start over", "from scratch", "restart",
+      "clear the set", "clear current set",
+      "new song", "another track",
+      "start a new track", "new track from scratch",
     ])
   ) {
     return "clear";
   }
 
-  if (includesPhrase(input, ["keep current set", "keep what is already in live", "keep current material", "keep live set"])) {
+  if (
+    includesPhrase(input, [
+      "keep current set", "keep what is already in live",
+      "keep current material", "keep live set",
+    ])
+  ) {
     return "keep";
   }
 
@@ -159,13 +159,8 @@ export const matchPromptOptionFromInput = (
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => right.score - left.score);
 
-  if (scored.length === 0) {
-    return undefined;
-  }
-
-  if (scored.length > 1 && scored[0].score === scored[1].score) {
-    return undefined;
-  }
+  if (scored.length === 0) return undefined;
+  if (scored.length > 1 && scored[0].score === scored[1].score) return undefined;
 
   return scored[0].option;
 };
@@ -175,9 +170,7 @@ export const resolveGuidedIntent = (
   _mode: GuidedNaturalMode,
 ): GuidedIntentResolution | undefined => {
   const input = normalizeText(rawInput);
-  if (!input) {
-    return undefined;
-  }
+  if (!input) return undefined;
 
   if (includesPhrase(input, ["show suggestions", "show options", "reopen guided starters", "guided starters", "suggest"])) {
     return { reopenSuggestions: true, confidence: "high" };
@@ -188,68 +181,34 @@ export const resolveGuidedIntent = (
   }
 
   const prepareChoice = resolveResetChoice(input);
-  const scope = detectSingleMatch(input, SCOPE_CANDIDATES);
   const genre = detectSingleMatch(input, GENRE_CANDIDATES);
   const tonalContext = extractTonalContext(input);
+  const trackMatches = TRACK_CANDIDATES.filter((candidate) => includesPhrase(input, candidate.phrases));
+  const sceneRoleMatch = detectSingleMatch(input, SCENE_ROLE_CANDIDATES);
+  const chainScenes = includesPhrase(input, ["chain scenes", "chain the scenes", "arrange scenes"]);
 
-  const foundationMatches = FOUNDATION_CANDIDATES.filter((candidate) => includesPhrase(input, candidate.phrases));
-  const continuationMatches = CONTINUATION_CANDIDATES.filter((candidate) => includesPhrase(input, candidate.phrases));
-
-  if (foundationMatches.length + continuationMatches.length > 1) {
+  if (trackMatches.length > 1) {
     return {
       confidence: "low",
-      ambiguity: "I matched more than one guided build step in that request. Try one step at a time.",
+      ambiguity: "I matched more than one track in that request. Try one at a time.",
     };
   }
 
-  const chainPrompt = includesPhrase(input, ["chain scenes", "chain the scenes", "arrange scenes"]);
-  const chainChoice = includesPhrase(input, ["chain a"])
-    ? "chain_a"
-    : includesPhrase(input, ["chain b"])
-      ? "chain_b"
-      : undefined;
-
   if (
-    !prepareChoice &&
-    !scope &&
-    !genre &&
-    !tonalContext &&
-    foundationMatches.length === 0 &&
-    continuationMatches.length === 0 &&
-    !chainPrompt &&
-    !chainChoice
+    !prepareChoice && !genre && !tonalContext &&
+    trackMatches.length === 0 && !sceneRoleMatch && !chainScenes
   ) {
     return undefined;
   }
 
-  const resolution: GuidedIntentResolution = {
-    confidence: "high",
-  };
+  const resolution: GuidedIntentResolution = { confidence: "high" };
 
-  if (prepareChoice) {
-    resolution.prepareChoice = prepareChoice;
-  }
-  if (scope) {
-    resolution.scope = scope;
-  }
-  if (genre) {
-    resolution.genre = genre;
-  }
-  if (tonalContext) {
-    resolution.tonalContext = tonalContext;
-  }
-  if (foundationMatches[0]?.id) {
-    resolution.foundationStep = foundationMatches[0].id;
-  }
-  if (continuationMatches[0]?.id) {
-    resolution.continuationStep = continuationMatches[0].id;
-  }
-  if (chainPrompt) {
-    resolution.chainPrompt = true;
-  }
-  if (chainChoice) {
-    resolution.chainChoice = chainChoice;
-  }
+  if (prepareChoice) resolution.prepareChoice = prepareChoice;
+  if (genre) resolution.genre = genre;
+  if (tonalContext) resolution.tonalContext = tonalContext;
+  if (trackMatches[0]?.id) resolution.trackId = trackMatches[0].id;
+  if (sceneRoleMatch) resolution.sceneRole = sceneRoleMatch;
+  if (chainScenes) resolution.chainScenes = true;
 
   return resolution;
 };

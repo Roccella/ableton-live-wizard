@@ -241,3 +241,21 @@ export const generateBasicPattern = (
 
   return notes;
 };
+
+export const scaleVelocity = (notes: MidiNote[], factor: number): MidiNote[] =>
+  notes.map((note) => ({
+    ...note,
+    velocity: Math.max(1, Math.min(127, Math.round(note.velocity * factor))),
+  }));
+
+export const thinNotes = (notes: MidiNote[], keepRatio: number): MidiNote[] => {
+  if (keepRatio >= 1) return notes;
+  if (keepRatio <= 0) return [];
+  const keepCount = Math.max(1, Math.round(notes.length * keepRatio));
+  const step = notes.length / keepCount;
+  const result: MidiNote[] = [];
+  for (let i = 0; i < keepCount; i += 1) {
+    result.push(notes[Math.floor(i * step)]);
+  }
+  return result;
+};

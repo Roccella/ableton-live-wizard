@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BASIC_PATTERN_NAMES, generateBasicPattern } from "../src/music/basic-patterns.js";
+import { BASIC_PATTERN_NAMES, generateBasicPattern, scaleVelocity, thinNotes } from "../src/music/basic-patterns.js";
 import { BasicPatternName, Transport } from "../src/types.js";
 
 type PatternExpectation = {
@@ -47,3 +47,41 @@ for (const pattern of BASIC_PATTERN_NAMES) {
     assert.ok(notes.every((note) => note.velocity > 0));
   });
 }
+
+test("scaleVelocity multiplies velocity and clamps to 1-127", () => {
+  const notes = [
+    { pitch: 60, velocity: 100, start: 0, duration: 1 },
+    { pitch: 64, velocity: 10, start: 1, duration: 1 },
+    { pitch: 67, velocity: 127, start: 2, duration: 1 },
+  ];
+
+  const scaled = scaleVelocity(notes, 0.5);
+  assert.equal(scaled[0].velocity, 50);
+  assert.equal(scaled[1].velocity, 5);
+  assert.equal(scaled[2].velocity, 64);
+
+  const boosted = scaleVelocity(notes, 2);
+  assert.equal(boosted[0].velocity, 127); // clamped
+  assert.equal(boosted[2].velocity, 127); // clamped
+
+  const zeroed = scaleVelocity(notes, 0);
+  assert.ok(zeroed.every((n) => n.velocity >= 1)); // min 1
+});
+
+test("thinNotes keeps a fraction of notes", () => {
+  const notes = Array.from({ length: 10 }, (_, i) => ({
+    pitch: 60 + i, velocity: 100, start: i, duration: 1,
+  }));
+
+  const half = thinNotes(notes, 0.5);
+  assert.equal(half.length, 5);
+
+  const full = thinNotes(notes, 1);
+  assert.equal(full.length, 10);
+
+  const empty = thinNotes(notes, 0);
+  assert.equal(empty.length, 0);
+
+  const minimal = thinNotes(notes, 0.05);
+  assert.equal(minimal.length, 1);
+});
