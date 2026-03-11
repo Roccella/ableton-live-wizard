@@ -1,98 +1,109 @@
 # Planning - Ableton Live Wizard
 
-## Problem
-Music creation in Ableton often breaks creative momentum because composition, clip editing, and arrangement mechanics require many repetitive manual actions.
-The goal is an agentic workflow that keeps the user in creative flow while preserving precise control and safe real-time edits.
+## Current Decision
+- Freeze active feature work on the Electron companion, TUI, daemon, and project-owned Remote Script.
+- Pivot the repo toward a `playbook-first` validation phase.
+- Validate musical value with `Producer Pal + Codex CLI` before building any new app layer.
+- Keep the existing app/runtime code in the repo as a dormant reference and future adapter target.
 
-## Product Roadmap
+## Product Thesis
+- The next product thesis is not `another Ableton MCP`.
+- The next product thesis is a `Musical Playbook` plus evaluation flow that improves:
+  - musical audits
+  - clarifying questions
+  - genre-aware suggestions
+  - loop modification guidance
+  - arrangement hints
+- If the playbook proves material value, the later app layer should become a thin planning/sync/memory UI on top of an existing backend such as Producer Pal.
 
-### V1 - TUI Foundation
-- Single-terminal, keyboard-first TUI.
-- Agent panel + simplified Session View.
-- Transport, selection context, prompt input, undo/redo, debugability.
-- Status: done and already validated in Live.
+## Terminology
+- `Musical Playbook`: reusable musical knowledge and operating rules.
+- `Project Memory`: local context for one Live project. Deferred for now.
+- `Live Context`: real-time state from Ableton through Producer Pal.
+- `Asset Catalog`: concrete MIDI, presets, racks, templates, and samples. Not the first focus.
 
-### V2 - Tracks + Clips Creation
-- Use the existing blank set and the first MIDI track as starting point.
-- Create, rename, and delete normal MIDI tracks during playback.
-- Load stock Ableton instruments by musical role from a curated catalog.
-- Create and delete basic Session View clips.
-- Write fixed MIDI patterns to test timbre and role fit.
-- Status: completed for the current MVP1 scope.
+## Roadmap
 
-### V3 - Guided Scene Builder With Fixed Genre Trees
-- Startup UX should begin with agent-style questions and selectable options.
-- The startup tree should first ask whether to clear the set or keep the current material.
-- After set preparation, the companion should ask for `scope -> genre -> tonal context` before creating content.
-- User can still type freely, but the main validation surface is a fixed decision tree.
-- The companion can already map a first set of English natural-language requests onto that guided tree, but open-ended composition chat is still future work.
-- First fixed trees are `House` and `Drum n bass`.
-- `Song sketch` keeps fixed continuation and chain steps, while `Single scene`, `One part`, and `Loop starter` stay foundation-first.
-- Current fixed scenes are ordered explicitly (`Intro`, `Verse 1`, `Verse 2`, `Build Up`, `Drop`, `Outro`).
-- Use fixed Ableton stock instruments, fixed clip patterns, and fixed scene structure.
-- Goal is to build a complete demo track for UX validation, not a musically finished release.
-- Scenes are treated as the first arrangement surface.
-- Non-song scopes should track completion by scene coverage, not only by track existence.
-- Song-mode / groovebox-style scene loop counts are a likely extension of this stage.
-- Current checkpoint: the terminal UI can already build very basic full tracks end to end for `House` and `Drum n bass`.
-- Current checkpoint: the Electron companion now also has a first stable chat-first checkpoint for the same constrained guided flows.
-- Remaining focus: improve decision-tree UX, contextual suggestions, pattern quality, preset quality, scene/application logic, and the future planner layer for broader natural-language composition requests.
-- Status: in progress, with first usable end-to-end demo milestone reached and current Electron companion stability back above the experimentation threshold.
+### P0 - Pivot Docs And Scaffolding
+- Update canonical project context to reflect the pivot.
+- Add a repo-local `playbook/` directory as the source of truth for reusable musical knowledge.
+- Add `research/playbook-validation/` for benchmark logs and templates.
+- Status: current step.
 
-### V3.5 - Descriptor-Driven House Copilot
-- Narrow the next musical-quality spike to `House` only while keeping the existing `Drum n bass` path as a regression/demo flow.
-- Introduce a composition prompt contract: short freeform prompts are allowed, but each prompt should target one intent and multi-intent requests are reformulated instead of applied.
-- Add a product-facing request guide in `docs/user-guide.md`.
-- Add selected-clip musical analysis and a first deterministic `16 beats -> 32 beats` variation workflow for exact prompt commands.
-- Introduce a first descriptor layer for `track` and `clip` requests, starting with `dark/bright`, `sad/happy`, `rigid/loose`, `minimal/dense`, `calm/frenetic`, and `soft/aggressive`.
-- Build a curated `House` corpus from included Ableton packs plus one medium external MIDI pack.
-- Treat `RAG` here as retrieval and ranking over curated MIDI clips, patterns, and bundles.
-- Defer `RL` until prompt, candidate, undo, retry, and acceptance logs exist to learn from.
-- Keep `scene` descriptors, `loop -> sections`, stock-device parameter moves, and MIDI CC automation as follow-on slices after the first ranking path feels stable.
-- Status: next active phase.
+### P1 - House Deep Validation
+- Build the first usable `House` playbook path.
+- Start with `M0.5 Zero-to-one` as a constrained smoke test:
+  - one scene
+  - two or three roles maximum
+  - no automation requirement
+  - sound selection can be rough if the musical structure is useful
+- Validate these milestones against existing loops:
+  - `M1 Audit`
+  - `M2 Modify`
+  - `M3 Add missing role`
+  - `M4 Arrangement hints`
+- Keep broad `M5 From scratch` blocked until `M1-M4` are clearly useful.
+- Status: next active work after scaffolding.
 
-### V4 - Richer Clip Manipulation And Editing
-- Move from fixed test clips to more musical clip generation/manipulation.
-- Add more guided composition steps and pattern variation.
-- Expand from creation-first into editing flows.
+### P2 - Cross-Genre Contrast
+- Add thinner `Techno` and `Trance` genre layers.
+- Re-run `M1-M3` on both to test whether the core playbook generalizes beyond `House`.
+- Use these genres as contrast probes, not as full-depth production targets yet.
+- Status: planned after `House` passes.
 
-### V5 - Sound Shaping With Stock Devices
-- Agent should understand the track sonically, not only structurally.
-- Add prompts/actions for EQ, saturation, stereo width, FX chains, and automations.
-- Start with fixed/curated stock-device moves before any open-ended mixing intelligence.
+### P3 - Stress Test With Drum And Bass
+- Add `Drum & Bass` as a divergence test.
+- Only validate `M1-M2` at first.
+- Use failures here to decide whether the playbook stays 4x4/melodic-first or broadens.
+- Status: planned after `P2`.
 
-### V6 - External Plugins
-- Extend sound shaping and instrument choice beyond stock Ableton devices.
-- Introduce external plugin awareness only after stock-device UX is solid.
+### P4 - Wrapper Layer
+- Add a thin Codex-facing wrapper only after `House` validation passes.
+- Keep the wrapper secondary to the agent-neutral Markdown source in `playbook/`.
+- Delay any Claude-oriented wrapper until the Codex path feels stable.
+- Status: blocked on `P1`.
 
-## Ideas / Use Cases
-- Producer opens a blank test set and asks for a bass track with an appropriate stock instrument.
-- Producer creates a lead track, loads a sound, and writes a basic Session clip to audition it.
-- Producer renames or deletes tracks while playback is running.
-- Producer makes a manual change in Live, then asks the agent for another action without losing sync.
-- Producer starts the companion, chooses a scope, genre, and tonal context, then walks the fixed tree until a multi-scene demo exists.
-- Producer uses scenes as arrangement primitives before any true Arrangement View workflow exists.
-- Producer asks for a `House` bassline that is darker, more rigid, or more minimal and gets a ranked, reusable musical option instead of raw generation from scratch.
-- Producer tries a longer mixed request and gets a short rewrite suggestion plus examples instead of a risky best-guess mutation.
+### P5 - Continue / Narrow / Kill Decision
+- `Continue` if the playbook clearly improves musical usefulness over Producer Pal without the playbook.
+- `Narrow` if `House`, `Techno`, and `Trance` work but `Drum & Bass` still fails.
+- `Kill` if `House` does not show clear improvement in `M1-M3`.
+- Status: blocked on `P1-P3`.
 
-## Technical Plan
-- Use TypeScript/Node for CLI and bridge modules.
-- Keep a bundled Ableton Remote Script in the repo for the TCP transport.
-- Add operation planner with deterministic diff summary and state refresh per command.
-- Use a curated stock-instrument role catalog with browser-path/keyword search.
-- Add fixed starter workflows as explicit libraries before any data-driven genre database exists.
-- Add a descriptor schema plus prompt normalizer/reformulator for composition chat.
-- Ingest a curated `House` corpus with metadata for role, BPM, key, tags, and descriptor hints.
-- Rank and retrieve reusable MIDI/bundle assets before any raw generation path is widened.
-- Log prompt, reformulation, ranked candidates, chosen asset, undo, and retry to support later ranking improvements.
+### P6 - App Layer Revisit
+- Only if `P5` is positive, design a thin app layer that adds:
+  - onboarding and install guidance
+  - sync/drift policy
+  - permission modes
+  - project memory
+  - persistent audit/suggestion UI
+- Keep backend control delegated to Producer Pal or another adapter-backed engine.
+- Status: frozen until `P5` passes.
+
+## File Structure For The Pivot
+- `playbook/PLAYBOOK.md`
+- `playbook/core/*.md`
+- `playbook/protocols/*.md`
+- `playbook/genres/*.md`
+- `playbook/evaluation/*.md`
+- `research/playbook-validation/*.md`
+
+## Validation Order
+- `House`: `M0.5`, then `M1-M4`, then `M5`.
+- `Techno`: `M1-M3`.
+- `Trance`: `M1-M3`, optional `M4` if the first pass is strong.
+- `Drum & Bass`: `M1-M2`.
 
 ## Acceptance Criteria
-- Reproducible demo on macOS + Live 12.3.2+ with playback running.
-- Agent can create, rename, delete tracks and assign stock instruments without desync.
-- Agent can create and delete basic Session clips and scenes.
-- Agent startup can guide the user into at least one full fixed-genre demo flow.
-- Manual edits in Live do not break the next command because state is refreshed first.
-- Current acceptance checkpoint achieved: the user can reach a very basic complete track structure from the single-terminal interface without leaving the guided flow.
-- Current acceptance checkpoint achieved: the user can analyze a selected MIDI clip and expand a selected 16-beat clip into a 32-beat variation with `resolve`, `question`, or `mini_roll`.
-- New near-term acceptance target: a short `House` prompt such as `darker bass`, `more rigid lead`, or `more minimal hats` maps to descriptor-aware retrieval without silently applying multi-intent guesses.
-- New near-term acceptance target: `docs/user-guide.md` matches the request surface the product actually supports.
+- `House M0.5` can create a minimal but musically plausible starter loop even if the final instrument and sound-design choices still need manual adjustment.
+- `House` shows clear improvement in audit quality, genre coherence, and actionable suggestions when used through Producer Pal + Codex CLI.
+- At least one of `Techno` or `Trance` shows genre-specific behavior beyond a `House` reskin.
+- The playbook consistently reformulates ambiguous prompts instead of guessing.
+- Unsupported actions are surfaced honestly with fallback suggestions.
+- Benchmark evidence is recorded in `research/playbook-validation/`.
+
+## Explicit Non-Goals For This Phase
+- No new app features.
+- No new bridge/runtime features.
+- No universal MIDI CC or automation-lane promise.
+- No broad asset ingestion or RAG store build-out yet.
+- No RL work until there is enough benchmark and acceptance data to learn from.

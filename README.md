@@ -1,22 +1,27 @@
 # Ableton Live Wizard
 
-Ableton Live Wizard now runs primarily as a local Electron companion app for Ableton Live, with the older TUI kept available as a fallback and debugging surface.
+Ableton Live Wizard currently keeps its Electron companion, TUI, daemon, and TCP bridge code in the repo as a dormant reference surface.
 
-The current scope is still MVP1:
-- Session View clips on normal MIDI tracks
-- stock instrument assignment
-- guided `House` and `Drum n bass` starters
-- preview/apply/undo-friendly mutations
+The active workstream is now a repo-local `Musical Playbook`, validated with `Producer Pal + Codex CLI` before any new app work resumes.
 
-Near-term product focus:
-- descriptor-driven `House` copilot
-- one-intent composition prompts with guided rewrites
-- curated musical asset retrieval before broader freeform composition chat
+Current product focus:
+- reusable musical knowledge in `playbook/`
+- benchmark-driven validation against existing Ableton loops
+- `House` as the deep validation genre
+- `Techno` and `Trance` as contrast probes
+- `Drum & Bass` as a later stress test
 
-The main architectural shift in this revision is:
-- the TUI can run local-first in one process for the lowest-friction operator path
-- the daemon still exists as an optional local transport layer for future clients
-- MCP is treated as a future adapter surface, not the internal runtime contract
+Current repo split:
+- `playbook/` is now the main artifact under active development
+- `research/playbook-validation/` stores benchmark notes and templates
+- the existing app/runtime code remains available as future infrastructure, but is frozen for now
+
+## Current Workflow
+1. Run Ableton with Producer Pal installed and connected.
+2. Open this repo in Codex CLI.
+3. Read `playbook/PLAYBOOK.md` plus the target protocol and genre file.
+4. Start with the `House M0.5 Zero-to-one` benchmark from `research/playbook-validation/next-session.md`.
+5. Run manual benchmarks and record results in `research/playbook-validation/`.
 
 ## Quick start
 ```bash
@@ -53,7 +58,7 @@ Then in Live:
 Machine-specific paths and reinstall notes are saved in [local-installation.md](/Users/iwa/repos/ableton-live-wizard/docs/local-installation.md).
 Future signing/notarization notes are saved in [macos-signing-notarization.md](/Users/iwa/repos/ableton-live-wizard/docs/macos-signing-notarization.md).
 
-## Runtime modes
+## Legacy Runtime Modes
 
 ### Desktop companion for Live
 The main operator path is now the Electron companion app:
@@ -137,7 +142,7 @@ This keeps everything in one process and is mainly for debugging:
 npm run start:local
 ```
 
-## Companion UI
+## Legacy Companion UI
 The Electron companion now behaves like a minimal chat sidebar:
 - no header panel
 - no debug panel inside the app
@@ -156,7 +161,7 @@ Debug/status output now goes to the terminal where you launched `npm start`.
 
 The legacy TUI remains in the repo for fallback testing, but it is no longer the preferred operator surface.
 
-## Prompt commands
+## Legacy Prompt Commands
 - `suggest`
 - `refresh`
 - `play`
@@ -178,27 +183,20 @@ The legacy TUI remains in the repo for fallback testing, but it is no longer the
 
 Product-facing request guidance now lives in [user-guide.md](/Users/iwa/repos/ableton-live-wizard/docs/user-guide.md).
 
-## Resource-first direction
-The repo now includes an initial resource catalog in code for:
-- reusable patterns
-- scene skeletons
-- compound bundles
-
-Current catalog scope is intentionally narrow:
-- `House`
-- `Drum n bass`
-
-Research and future watch items are saved in:
+## Research And References
+Research, teardowns, and future watch items are saved in:
 - [producer-pal-teardown.md](/Users/iwa/repos/ableton-live-wizard/research/producer-pal-teardown.md)
 - [ableton-mcp-teardown.md](/Users/iwa/repos/ableton-live-wizard/research/ableton-mcp-teardown.md)
 - [guided-suggestions-and-musical-libraries.md](/Users/iwa/repos/ableton-live-wizard/research/guided-suggestions-and-musical-libraries.md)
 - [ecosystem-watchlist.md](/Users/iwa/repos/ableton-live-wizard/research/ecosystem-watchlist.md)
 - [musical-copilot-direction-2026-03-10.md](/Users/iwa/repos/ableton-live-wizard/research/musical-copilot-direction-2026-03-10.md)
+- [producer-pal-layer-decision-2026-03-11.md](/Users/iwa/repos/ableton-live-wizard/research/producer-pal-layer-decision-2026-03-11.md)
 
 ## Current limitations
 - Session View remains the operative clip surface.
 - `apply cc` is still not supported by the TCP bridge.
-- Returns, Master, Arrangement workflows, and mixing intelligence are still out of scope.
+- The repo is not currently shipping an active app-layer roadmap; app work is frozen behind playbook validation.
+- Returns, Master, Arrangement workflows, and mixing intelligence are still out of scope for the frozen runtime path.
 - The first resource catalog is code-defined and conservative.
 - The daemon binds only to `127.0.0.1` when used.
 - The macOS bundle is local and unsigned; notarization/signing is not implemented yet.

@@ -222,6 +222,63 @@ Outcome:
 - Existing exact commands still win, ambiguous guided requests do not silently mutate the set, and unsupported freeform composition requests still fall back to explicit suggestions.
 - The guided House starter now consistently targets `A Soft Chord` for its chord layer.
 
+### 2026-03-10 - Make the Electron companion clip-first and align expansion to the real loop size
+Context:
+- Real testing showed a mismatch between `16 steps`, `4 beats`, and `16 beats`.
+- The intended user workflow for the new musical spike is not the old guided tree; it is selecting an existing bass clip in Live, analyzing it, and expanding it with one clear intent.
+Decision:
+- Change the first selected-clip rewrite target from `16 beats -> 32 beats` to `4 beats -> 8 beats`.
+- Make the Electron companion boot directly into a selected-clip action prompt instead of the old `clear/keep -> genre -> tonal context` tree.
+- Surface direct in-chat buttons for `Expand: Resolve`, `Expand: Question`, and `Expand: Mini roll`.
+- Keep the old guided tree in code and the TUI fallback for reference/debugging, but remove it from the default Electron entrypoint.
+Outcome:
+- The default `npm start` path is now aligned with the real manual test: make a 1-bar bass clip in Live, select it, and expand it to 2 bars from the companion.
+- The product contract is clearer because the companion UI now exposes only the actions the current musical slice actually supports.
+
+### 2026-03-10 - Add companion auto-sync and general clip expand/contract primitives
+Context:
+- The clip-first workflow no longer needed separate `Refresh from Live` and `Analyze clip` buttons in the main path once the companion could keep itself aligned to Live automatically.
+- The first rewrite primitive was still too narrow because it only handled `4 beats -> 8 beats`, while the next scene/track work needs reusable clip-level transforms.
+Decision:
+- Add background Live auto-sync in the Electron companion and update the clip prompt in place instead of appending refresh spam.
+- Keep `refresh` and `analyze clip` as exact commands, but remove them from the primary button row.
+- Generalize the rewrite primitive so clip expansion doubles any whole-bar MIDI clip, and add `contract clip` to keep the first half of longer clips.
+- Keep contraction disabled while the selected clip is playing, and keep keyboard navigation/input focus aligned with the simpler clip-first UX.
+Outcome:
+- The companion now updates the selected-clip prompt automatically as Live selection/state changes.
+- The primary clip buttons are now `Expand: Resolve`, `Expand: Question`, `Expand: Mini roll`, and `Contract clip`.
+- Exact commands now support `expand clip <intent>` plus `contract clip`, with `vary clip <intent>` kept as a compatibility alias.
+
+### 2026-03-11 - Pivot the repo toward a playbook-first validation phase
+Context:
+- Recent testing with Producer Pal showed that broad Live control, prompt flexibility, and multi-client operation are already available in a stronger public reference product.
+- The unresolved question is no longer "can the repo control Ableton?" but "can a reusable musical knowledge layer materially improve musical audits, clarifications, and suggestions?"
+- Building more app/runtime features before answering that would add UI surface without proving musical value.
+Decision:
+- Freeze active feature work on the Electron companion, TUI, daemon, and project-owned bridge.
+- Keep the existing code in the repo as dormant reference infrastructure rather than deleting it.
+- Pivot the immediate workstream to a repo-local `Musical Playbook`.
+- Validate the playbook first with `Producer Pal + Codex CLI`, not with a new app layer.
+- Use `House` as the deep genre, `Techno` and `Trance` as early contrast probes, and `Drum & Bass` as a later stress test.
+Outcome:
+- The project now has a narrower and more defensible next question: whether a portable musical playbook improves results enough to justify future UI work.
+- The next implementation work is mostly documentation and evaluation scaffolding rather than new runtime code.
+
+### 2026-03-11 - Move a constrained zero-to-one House loop test ahead of the broader benchmark ladder
+Context:
+- Existing-loop audits and edits are still the core validation path, but they can hide whether the playbook can establish a usable genre identity from near zero.
+- The user wants an early read on whether the playbook can ask for and produce a simple `House` loop directly, even if instrument and sound-design choices still need manual refinement later.
+Decision:
+- Add `M0.5 Zero-to-one` ahead of the main `House` benchmark ladder.
+- Keep it intentionally narrow:
+  - one scene
+  - two or three roles maximum
+  - no automation requirement
+  - useful musical structure matters more than final timbral polish
+- Keep broad `from scratch` generation deferred until existing-loop milestones still pass.
+Outcome:
+- The first benchmark sequence is now clearer: smoke-test zero-to-one viability first, then judge the playbook on audit and iteration quality with existing loops.
+
 ### 2026-03-08 - Align default track creation with the selected Live track
 Context:
 - Manual track creation in Live behaves relative to the currently selected track, while the companion path had been creating tracks with `create_midi_track(-1)`, which always appends at the end.
@@ -286,13 +343,72 @@ Decision:
 - Add a cheap app-level state hash and clip note hash so the UI/runtime can reason about drift and selected-clip status without a broad architecture rewrite first.
 - Ship the first narrow musical copilot slice as exact prompt commands on the selected clip:
   - `analyze clip`
-  - `vary clip resolve`
-  - `vary clip question`
-  - `vary clip mini_roll`
-- Keep the variation path deterministic and intentionally narrow: selected existing `16-beat -> 32-beat` MIDI clips, optimized first for `House` bass-first trials.
+  - `expand clip resolve`
+  - `expand clip question`
+  - `expand clip mini_roll`
+- Keep the variation path deterministic and intentionally narrow: selected whole-bar MIDI clips, optimized first for `House` bass-first trials.
 Outcome:
-- The product can now read real clip notes, summarize a selected clip, and rewrite a selected 16-beat clip into a 32-beat variation with a clear ending intent.
+- The product can now read real clip notes, summarize a selected clip, and rewrite a selected clip into a longer variation with a clear ending intent.
 - The bridge/runtime gap for "work from what is already in Live" is smaller now, even though broader scene/song reasoning is still future work.
+
+### 2026-03-10 - Add grouped selected-scene expansion on top of clip variation
+Context:
+- After validating clip-level expansion in Live, the next product question became whether multiple clips can be coordinated into a safe scene-level variation without giving up fast iteration or reliable undo.
+- A scene-level action built from several lower-level Live mutations would have regressed the earlier "one action, one Live undo" polish unless the bridge/runtime gained an atomic grouped operation.
+Decision:
+- Add a project-owned `batch` operation through the server, mock bridge, TCP bridge, and bundled Remote Script so one grouped action can map to one Live undo step.
+- Add a first deterministic `scene expansion` engine for exact commands:
+  - `expand scene lift`
+  - `expand scene break`
+  - `expand scene extend`
+- Keep the first scene path intentionally narrow: duplicate the selected scene into the next slot, reuse only the MIDI clips that already exist there, infer rough roles from `instrumentRole` or track names, and vary them with fixed heuristics rather than broad generation.
+- Keep the new scene at the same shared clip length as the source scene by default, and refuse mixed-length source scenes instead of guessing.
+- If the source scene is already playing, queue the new scene to launch on the next scene boundary after creation.
+- Extend the clip-first companion prompt with direct `Scene: Lift`, `Scene: Break`, and `Scene: Extend` buttons when the selected scene contains MIDI clips.
+- Invalidate cached `lastState` after mutations, undo, and redo so back-to-back commands plan against fresh Live state instead of stale snapshots.
+Outcome:
+- The clip-first companion can now grow one loop scene into an adjacent variation scene while keeping the whole action undoable from Live in one step.
+- The first scene path now behaves more like a real arrangement move: same-length adjacent variation, predictable duration semantics, and auto-launch when it is chained off a currently playing scene.
+- The product now has a reusable grouped-mutation path that can support later track-level or arrangement-level growth without immediately regressing undo behavior.
+- Automated coverage now includes grouped mock undo, scene expansion planning, prompt execution of scene expand, TCP `run_batch` serialization, and companion scene-action wiring.
+
+### 2026-03-10 - Make scene variation more explicit and lock the companion to Live selection
+Context:
+- Trial use of the first scene buttons showed two UX problems: `break` was often too subtle to read as a breakdown, and after scene actions it was still too easy to keep clicking in the companion without being explicit about what was selected in Live.
+Decision:
+- Make `breakdown` role behavior more aggressive in the deterministic scene-role map: keep kick/snare excluded, make hats and bass sparser, and soften harmony instead of leaving it untouched.
+- Strengthen the scene-note heuristics so `lift` adds clearer end energy and `break` thins/softens remaining parts instead of only nudging velocities.
+- Lock the clip-first companion when no MIDI clip is explicitly selected in Live: disable the text input and all scene/clip action buttons until a clip is selected again.
+Outcome:
+- `Scene: Break` now produces a more audible breakdown with the current deterministic engine.
+- `Scene: Lift` is less likely to read as another break when applied from a normal loop scene.
+- The companion now makes selection state explicit, which reduces ambiguity about which clip/scene the next action will target.
+
+### 2026-03-10 - Reprioritize the next milestone to an Arrangement copilot from one selected Session scene
+Context:
+- The clip and scene rewrite slices proved that the companion can safely read Session clips, vary them, and keep undo/playback reasonably usable, but they also clarified that `extend track` is not the right next problem.
+- The user already has existing Ableton projects that live as one loop in Session View and wants the next workflow to start from that reality: open the companion, explain the intent in short natural language, promote the loop into Arrangement, and then grow a track section by section.
+- The current repo still has no true Arrangement contract: no arrangement clips, no locators, no playhead/loop-range control, and no promotion path from Session into Arrangement.
+Decision:
+- Defer `extend track` for now.
+- Keep `extend scene` as a Session-side experimentation tool, not as the main roadmap pillar.
+- Make the next active phase an `Arrangement copilot` that starts from one selected Session scene.
+- Use the selected scene as the promotion unit.
+- When starting the Arrangement flow, the companion should:
+  - ask which track in the selected scene is the harmonic main track,
+  - infer provisional roles for the remaining tracks,
+  - allow quick role correction,
+  - copy the scene into Arrangement while keeping Session intact.
+- After promotion, Arrangement becomes the source of truth for the workflow and Session remains reference material only.
+- Initial section set for the Arrangement flow should be `Intro`, `Verse`, `Break`, `Lift`, and `Outro`.
+- Default placement should append after the current section, but prompts that ask for insertion before or between existing sections should ripple later sections forward.
+- After creating or editing a section, playback should focus on that section by updating the Arrangement loop range.
+- Source scenes may contain mixed clip lengths; the harmonic main track should define the authoritative section unit, with shorter clips repeating and longer clips truncating to fit.
+- The first prompt layer for this mode should support short natural-language, one-intent requests, while also surfacing all available actions as visible in-chat options.
+- First musical evaluation should start with chord-led loops, then two melodic/harmonic tracks, and only later drums.
+Outcome:
+- The project now has a clear next active plan that matches the user's real working setup more closely than further Session-only expansion work.
+- The next implementation dependency is explicit: extend the project-owned Remote Script and bridge with a minimal Arrangement contract before building the new companion flow.
 
 ## Milestones
 
@@ -322,6 +438,12 @@ Outcome:
 - Product-facing request guide and prompt reformulation rules.
 - Retrieval/ranking over reusable musical assets before any broader freeform composition layer.
 - First shipped selected-clip variation slice for exact prompt commands.
+
+### M3.6 - Arrangement Copilot From Selected Session Scene
+- Promote one selected Session scene into Arrangement.
+- Ask for the harmonic main track and infer the rest of the roles.
+- Keep Session intact, but make Arrangement the source of truth after promotion.
+- Grow the song through `Intro`, `Verse`, `Break`, `Lift`, and `Outro` sections with ripple insertion and section-local looping.
 
 ### M4 - Sound Shaping
 - Stock-device sound design and mixing moves.

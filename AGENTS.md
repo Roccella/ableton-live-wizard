@@ -12,6 +12,8 @@ Build an agentic copilot for Ableton Live that lets the user control production 
 - Safe operations during playback, with preview and undo first-class.
 
 ## Current Implementation Status
+- As of 2026-03-11, active product work is frozen on the Electron/TUI/app surfaces while the repo pivots to a `playbook-first` validation phase using `Producer Pal + Codex CLI`.
+- The existing Electron companion, TUI, daemon, and project-owned TCP bridge remain in the repo as dormant reference infrastructure until the playbook proves material musical value.
 - MVP1 now uses a local Electron companion app as the main operator surface, with the older TUI kept as a fallback and debugging surface.
 - The current product surface operates on the open Live Set, focused on normal MIDI tracks and Session View clips.
 - Live integration currently uses a bundled TCP Remote Script (`support/AbletonMCP/__init__.py`) installed as an Ableton Control Surface.
@@ -31,12 +33,18 @@ Build an agentic copilot for Ableton Live that lets the user control production 
   - debug and operation events over a local event stream
 - Validated flows in Live: create/rename/delete tracks, create/delete scenes, create/delete clips, assign stock instruments by role, write basic test patterns, set tempo, start/stop transport, fire clips, fire scenes, undo/redo.
 - Current checkpoint: the Electron companion can already control the same MVP1 flows as the TUI, and the architecture still preserves a future daemon-backed path for multiple clients.
-- Current checkpoint: the Electron companion reached a first stable local testing version for the current MVP1 guided flows, after TCP bridge browser-search hardening, Remote Script main-thread safety fixes, and UI simplification passes.
+- Current checkpoint: the Electron companion reached a first stable local testing version for the current selected-clip rewrite flow, after TCP bridge browser-search hardening, Remote Script main-thread safety fixes, and UI simplification passes.
+- Current checkpoint: the clip-first companion now also ships a first grouped selected-scene expansion flow (`Lift`, `Break`, `Extend`) on top of the clip rewrite primitives.
+- Current scene expansion rule: the new scene keeps one shared source-scene clip length by default, refuses mixed-length source scenes instead of guessing, and queues the new scene at the next boundary when the source scene is already playing.
 - This should still be treated as a UX/control milestone, not as a musically strong generation milestone yet.
 - The pending `review-tests` backlog is now closed: automated coverage now includes prompt executor branches, Electron chat session flows, mock bridge edge cases, daemon HTTP routes, TCP bridge data transforms, utility helpers, full basic-pattern coverage, and the real bridge backend contract.
-- The companion runtime still uses the guided decision tree with fixed `House` and `Drum n bass` starters, foundation-step choices, continuation-step choices, and fixed chain suggestions.
-- The Electron companion guided startup flow now begins with `clear current set` vs `keep what is already in Live`, then asks for `scope -> genre -> tonal context` before offering fixed building steps.
-- The Electron companion now accepts English-only natural-language shortcuts for the guided flow, mapping resets and guided-tree requests onto the same handlers that power the visible suggestion buttons. Exact prompt commands still take precedence.
+- The Electron companion now boots into a clip-first workflow: it auto-syncs the selected Live MIDI clip in the background and renders direct in-chat actions for clip expansion and contraction intents.
+- The same clip-first companion prompt now also exposes direct selected-scene expansion actions when the highlighted scene contains MIDI clips.
+- The clip-first companion is intentionally selection-gated for now: if no MIDI clip is explicitly selected in Live, all guided actions and the text input stay disabled until the user selects one again.
+- The old guided decision tree still exists in the repo and TUI fallback as a reference/demo path, but it is no longer the default Electron companion entrypoint.
+- The current selected-clip rewrite slice targets `1 bar / 4 beats -> 2 bars / 8 beats` and is intended for `House` bass-first trials.
+- `extend track` is explicitly deferred for now; `extend scene` remains as a Session-side experimentation tool rather than the main roadmap target.
+- The next active legacy-app milestone would be an Arrangement copilot from one selected Session scene, but that work is frozen behind the current playbook validation phase.
 - Guided scopes now distinguish `Single scene`, `One part`, `Loop starter`, and `Song sketch`, so quick one-scene tests and single-role sketches do not expose full-song continuations too early.
 - The guided tree is now non-linear inside each genre: element choices and arrangement choices coexist, and later element choices fill the scenes that already exist.
 - Guided build suggestions are now derived from Live-aware progress plus a declarative per-genre build graph, so later paths can stay visible but disabled until the set is ready.
@@ -44,7 +52,7 @@ Build an agentic copilot for Ableton Live that lets the user control production 
 - Default track creation now tries to insert after the currently selected Live track when no explicit index is provided, to better mirror manual track creation behavior.
 - The fixed guided House starter now uses `A Soft Chord.adv` for the `Chords` track preset.
 - A first resource catalog now exists in code for reusable patterns, scene skeletons, and compound bundles for `House` and `Drum n bass`.
-- The next musical-copilot spike narrows active composition work to `House` only, while keeping `Drum n bass` as an existing guided demo/reference path.
+- The active playbook validation sequence now uses `House` as the deep genre, `Techno` and `Trance` as contrast probes, and `Drum n bass` as a later stress test.
 
 The product is intentionally split in three MVPs:
 - MVP1: Control normal MIDI tracks, assign stock instruments, and create basic Session clips during playback.
@@ -52,10 +60,18 @@ The product is intentionally split in three MVPs:
 - MVP3: Expand approved loop material into arrangement sections with musical balance.
 
 ## Current Product Roadmap
+- P0: Musical Playbook pivot, benchmark harness, and canonical doc rewrite. Status: in progress.
+- P1: `House` deep validation with `Producer Pal + Codex CLI`, starting with a constrained `M0.5 Zero-to-one` smoke test and then moving through audit, modify, add-role, and arrangement-hint milestones. Status: next active step.
+- P2: `Techno` and `Trance` contrast probes to test core-vs-genre separation. Status: planned.
+- P3: `Drum n bass` stress test to decide whether the thesis stays 4x4/melodic-first or broadens. Status: planned.
+- P4: App-layer revisit only if playbook validation proves material value. Status: blocked on P1-P3.
+
+## Legacy App Roadmap
 - V1: TUI foundation. Status: done.
 - V2: tracks + clips creation with fixed resources. Status: done for MVP1 scope.
 - V3: guided scene builder with fixed `House` and `Drum n bass` trees, startup suggestions, and complete demo-track UX. Status: reached first end-to-end full-track demo milestone; now moving toward resource-first guidance and sidebar-style UX.
-- V3.5: descriptor-driven `House` copilot with short prompt guidance, curated corpus retrieval/ranking, and a product-facing request guide.
+- V3.5: descriptor-driven `House` copilot with short prompt guidance, curated corpus retrieval/ranking, and a product-facing request guide. Status: partially explored through clip/scene rewrite slices, but currently deprioritized.
+- V3.6: Arrangement copilot from one selected Session scene. Status: next active phase.
 - V4: stock-device sound shaping and fixed sonic adjustments.
 - V5: external plugin support.
 - Possible V3 extension: groovebox/song-mode style scene loop counts before scene transitions.
@@ -89,7 +105,7 @@ The product is intentionally split in three MVPs:
 - Electron companion window with minimal chat-first UI and guided options embedded in the conversation.
 - Track lifecycle control for normal MIDI tracks: create, rename, delete.
 - Stock instrument selection by musical role for Session-oriented testing.
-- Guided startup UX with selectable options and visible disabled future paths.
+- Clip-first startup UX with selectable in-chat actions driven by the current Live selection.
 - Fixed guided demo builders for `House` and `Drum n bass`, using stock instruments, fixed patterns, and fixed scenes.
 - Current guided drum implementation uses separate `Kick`, `Snare`, and `Hats` tracks and reuses the first empty MIDI track when possible.
 - Current guided material is fully programmatic. No LLM inference is used for fixed starters, scene filling, or pattern generation in MVP1.
@@ -137,6 +153,13 @@ The product is intentionally split in three MVPs:
 - Treat `RAG` in this phase as curated corpus retrieval/ranking over musical assets, not model fine-tuning.
 - Defer `RL` until prompt, selection, undo, and retry logs exist to train against.
 - Add `docs/user-guide.md` as a product-facing contract for what the user can ask.
+- Date: 2026-03-11.
+- Product direction updated:
+- Freeze active feature work on the Electron companion, TUI, daemon, and project-owned bridge.
+- Pivot the repo to a `Musical Playbook` validation phase before any new app work.
+- Use `Producer Pal + Codex CLI` as the initial validation path instead of building a new UI first.
+- Keep the playbook portable and Markdown-first; wrappers/skills are secondary delivery layers.
+- Validate genres in this order: `House` deep, `Techno` and `Trance` contrast, `Drum n bass` stress test.
 
 ## Pending Decisions
 - Exact operation schema for `preview -> apply -> undo`.
@@ -151,7 +174,7 @@ The product is intentionally split in three MVPs:
 - Scope and coverage semantics for guided steps: how single-role sketches, multi-scene sketches, and full-track growth should differ in scene population and completion rules.
 - Final descriptor schema and ranking rules for terms such as `rigid`, `loose`, `dark`, `minimal`, and `frenetic`.
 - Exact ingestion path and licensing boundaries for the first external House MIDI pack(s).
-- When to add `Techno` as the second descriptor-aware genre after the `House` spike stabilizes.
+- Whether `Techno` graduates from contrast probe to a full-depth validation genre after the first playbook benchmark pass.
 
 ## Tech Stack (Planned)
 - Language: TypeScript (Node.js 22+).
@@ -169,9 +192,11 @@ The product is intentionally split in three MVPs:
 - `AGENTS.md` canonical context.
 - `journal.md` origin + major decisions.
 - `planning.md` execution roadmap.
+- `playbook/` portable musical playbook and benchmark-facing protocols.
 - `docs/user-guide.md` product-facing request guide and reformulation rules.
 - `docs/local-installation.md` machine-specific install paths and reinstall notes.
 - `research/musical-copilot-direction-2026-03-10.md` consolidated direction for descriptor-driven composition work.
+- `research/playbook-validation/` manual benchmark notes and templates.
 - `research/` research artifacts, teardowns, and ecosystem watchlist.
 - `reference/previous-interpretation/` archived non-canonical material.
 
@@ -221,7 +246,7 @@ The product is intentionally split in three MVPs:
 - Product code exists and is live-tested, but only for normal MIDI tracks and Session View clips.
 - Product code can already assemble a very basic full track from the companion runtime, but only through constrained guided flows and fixed musical resources.
 - No claim of full Ableton feature coverage in early phases.
-- Returns, Master, Arrangement workflows, MIDI CC automation over TCP, and mixing intelligence are still out of scope.
+- Returns, Master, and advanced mixing intelligence are still out of scope. Arrangement workflows are not shipped yet and legacy app work is frozen behind the playbook-first phase.
 - The Remote Script contract is project-owned and may evolve as MVP2/MVP3 demand richer Live operations.
 - Background auto-refresh is still intentionally limited; state refresh is explicit and the daemon event stream is optional rather than required.
 - Guided startup flows are intentionally constrained to two fixed genres with fixed keys, scales, scene order, instruments, and patterns.
@@ -231,9 +256,10 @@ The product is intentionally split in three MVPs:
 - Freeform natural-language input is currently limited to guided-tree actions and reset/restart phrases. Open-ended composition chat still needs a broader planner/parser layer.
 - Descriptor-driven composition requests, stock-device parameter edits, and MIDI CC automation remain planned work rather than shipped behavior.
 - The bridge now reads MIDI notes from Session clips in the project-owned Remote Script path and exposes a cheap state hash plus selected-track/clip context in app state.
-- A first musical-quality workflow now exists for exact prompt commands on the selected clip: `analyze clip` plus deterministic `vary clip resolve|question|mini_roll`.
-- The first shipped variation slice is intentionally narrow: it targets existing 16-beat MIDI clips, optimized for `House` bass-first trials, and rewrites them into 32-beat variations.
+- A first musical-quality workflow now exists for exact prompt commands on the selected clip: `analyze clip`, deterministic `expand clip resolve|question|mini_roll`, and `contract clip` with `vary clip ...` kept as a compatibility alias.
+- The first shipped variation slice now extends one layer up: selected whole-bar MIDI clips can be expanded/contracted directly, and the selected scene can be duplicated into the next slot with deterministic `lift`, `break`, or `extend` transforms.
+- Grouped scene actions now use a project-owned TCP batch command so one scene expansion still maps to one Live undo step when the bundled Remote Script is installed.
 
 ## Runtime
 - Runtime target: `codex`.
-- Active phase: `house-bass-variation-copilot`.
+- Active phase: `musical-playbook-house-m0.5-zero-to-one`.
